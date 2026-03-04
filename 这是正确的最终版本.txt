@@ -1,0 +1,49 @@
+在终端（PowerShell 或 CMD）中运行以下命令。这会启动一个 PostgreSQL 容器，端口映射为 5432，密码设置为 postgres。
+docker run -d --name pgvector-demo -e POSTGRES_PASSWORD=postgres -p 5432:5432 pgvector/pgvector:pg16
+
+
+进入容器操作
+docker exec -it pgvector-demo psql -U postgres
+CREATE DATABASE rag_demo;
+\c rag_demo
+
+
+RabbitMQ 已经在本地 5672 (AMQP) 和 15672 (Management UI) 端口上运行。
+分 四步 彻底改造整个文档处理流程
+1. 添加依赖 (pom.xml)
+需要添加 spring-boot-starter-amqp 依赖，这是 Spring 提供的 RabbitMQ 客户端。
+2. 修改数据模型 (Document)
+在 Document 实体中增加一个 status 字段（例如：UPLOADING, PROCESSING, COMPLETED, FAILED），用于记录当前文档的解析进度。
+
+3. 创建 MQ 配置与服务
+配置类：定义一个 document.process 队列。
+生产者 (Service)：在文档上传后，不直接解析，而是发送一条消息到 MQ，并立即返回。
+消费者 (Listener)：一个专门的组件监听队列，收到消息后，才真正去 解析 PDF -> Embedding -> 存向量库。
+4. 前端展示
+修改 doc_list.html，把状态展示给用户。如果是 PROCESSING，显示“解析中...”，并加上简单的刷新按钮或自动刷新脚本。
+最终要实现的效果：
+基础设施：RabbitMQ 容器已启动。
+依赖：引入了 spring-boot-starter-amqp。
+数据模型：Document 实体增加了 status 字段。
+架构拆分：
+Controller: 只存文件，发 MQ，秒回。
+Service: 新增 processDocumentAsync 处理繁重任务。
+MQ: 缓冲任务。
+Consumer (DocProcessor): 监听队列，调用异步处理方法。
+前端：doc_list.html 增加了状态展示和自动刷新逻辑。
+
+
+修改后的流程：
+saveDocument:
+(1) 创建 Document 记录，status = PENDING。
+(2) 发送 MQ 消息 docId。
+(3) 立刻返回。
+processDocumentAsync (Consumer 调用):
+(1) 从数据库取 Document。
+(2) 读取文件，PDF 解析。
+(3) 调用 Embedding API。
+(4) 存入 PG 向量库。
+(5) 更新 status = COMPLETED。
+
+
+

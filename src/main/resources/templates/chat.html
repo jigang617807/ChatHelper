@@ -354,14 +354,24 @@
             box.scrollTop = box.scrollHeight; // 实时滚动
         };
 
+        // evtSource.onerror = function(err) {
+        //     console.error("SSE Error:", err);
+        //     // 提示用户出错（复用当前 aiBubble，避免引用未定义变量）
+        //     full += "\n\n(连接中断或服务器错误)";
+        //     aiBubble.innerHTML = marked.parse(full);
+        //     evtSource.close();
+        //     evtSource = null;
+        // };
         evtSource.onerror = function(err) {
             console.error("SSE Error:", err);
-            // 提示用户出错
-            aiTextSpan.textContent += "\n\n(连接中断或服务器错误)";
+            aiTextSpan.textContent +="\n\n(连接中断或服务器错误)";
             aiTextSpan.style.color = 'red';
             evtSource.close();
             evtSource = null;
         };
+
+
+
     }
     /**
      * 新增：清除当前文档关联的所有聊天记录和对话。

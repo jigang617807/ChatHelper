@@ -240,6 +240,42 @@ th { background: rgba(126,162,255,.22); color: #e0e9ff; }
 .doc-table th:nth-child(3), .doc-table td:nth-child(3) { width: 24%; }
 .doc-table th:nth-child(4), .doc-table td:nth-child(4) { width: 18%; }
 
+.doc-table .actions-cell {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.doc-actions-scroll {
+  width: 100%;
+  max-width: 220px;
+  margin: 0 auto;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  scrollbar-gutter: stable both-edges;
+  padding-bottom: 6px;
+}
+
+.doc-actions-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: max-content;
+}
+
+.doc-actions-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.doc-actions-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+.doc-actions-scroll::-webkit-scrollbar-thumb {
+  background: rgba(126, 162, 255, 0.65);
+  border-radius: 999px;
+}
+
 .badge { white-space: nowrap; }
 .empty-tip { color: var(--muted); text-align: center; margin-top: 80px; }
 

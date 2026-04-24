@@ -29,23 +29,29 @@
             <tr th:each="doc : ${docs}">
                 <td class="filename-cell" th:text="${doc.title}" th:title="${doc.title}">项目需求文档.pdf</td>
                 <td>
-                    <span th:if="${doc.status.name() == 'COMPLETED'}" class="badge badge-success">✅ 已完成</span>
-                    <span th:if="${doc.status.name() == 'PROCESSING'}" class="badge badge-warning">🔄 处理中</span>
-                    <span th:if="${doc.status.name() == 'PENDING'}" class="badge badge-pending">⏳ 排队中</span>
-                    <span th:if="${doc.status.name() == 'FAILED'}" class="badge badge-danger">❌ 失败</span>
+                    <span th:if="${doc.status.name() == 'COMPLETED'}" class="badge badge-success">已完成</span>
+                    <span th:if="${doc.status.name() == 'PROCESSING'}" class="badge badge-warning">处理中</span>
+                    <span th:if="${doc.status.name() == 'PENDING'}" class="badge badge-pending">排队中</span>
+                    <span th:if="${doc.status.name() == 'FAILED'}" class="badge badge-danger">失败</span>
                 </td>
                 <td class="time-cell" th:text="${doc.uploadedAt}" th:title="${doc.uploadedAt}">2025-11-20 14:30</td>
-                <td>
-                    <div class="actions">
-                        <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/chat/start?docId=' + ${doc.id}}">
-                            <button class="btn btn-success btn-sm">开始对话</button>
-                        </a>
+                <td class="actions-cell" title="可左右滑动查看完整操作按钮">
+                    <div class="doc-actions-scroll">
+                        <div class="doc-actions-inner">
+                            <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/chat/start?docId=' + ${doc.id}}">
+                                <button class="btn btn-success btn-sm">开始问答</button>
+                            </a>
 
-                        <button th:unless="${doc.status.name() == 'COMPLETED'}" class="btn btn-secondary btn-sm btn-disabled" disabled>
-                            准备中
-                        </button>
+                            <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/agent/doc/start?docId=' + ${doc.id}}">
+                                <button class="btn btn-secondary btn-sm">打开 Agent</button>
+                            </a>
 
-                        <button class="btn btn-danger btn-sm" th:attr="onclick=|confirmDelete(${doc.id}, '${doc.title}')|">删除</button>
+                            <button th:unless="${doc.status.name() == 'COMPLETED'}" class="btn btn-secondary btn-sm btn-disabled" disabled>
+                                准备中
+                            </button>
+
+                            <button class="btn btn-danger btn-sm" th:attr="onclick=|confirmDelete(${doc.id}, '${doc.title}')|">删除</button>
+                        </div>
                     </div>
                 </td>
             </tr>
@@ -59,12 +65,10 @@
 </div>
 
 <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const hasProcessing = document.body.innerText.includes("处理中") || document.body.innerText.includes("排队中");
-        if (hasProcessing) {
-            setTimeout(() => {
-                window.location.reload();
-            }, 2000);
+    document.addEventListener("DOMContentLoaded", function () {
+        const hasPending = document.body.innerText.includes("处理中") || document.body.innerText.includes("排队中");
+        if (hasPending) {
+            setTimeout(() => window.location.reload(), 2000);
         }
     });
 
@@ -73,31 +77,24 @@
             return;
         }
 
-        const deleteUrl = '/doc/delete';
-
-        fetch(deleteUrl, {
-            method: 'POST',
+        fetch("/doc/delete", {
+            method: "POST",
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
+                "Content-Type": "application/x-www-form-urlencoded"
             },
-            body: new URLSearchParams({ 'docId': docId })
+            body: new URLSearchParams({ docId: docId })
         })
-        .then(response => {
-            if (response.ok) {
-                alert(`文档 "${docTitle}" 删除成功！`);
-                window.location.reload();
-            } else {
-                response.text().then(errorMessage => {
-                    alert(`删除失败: ${errorMessage || response.statusText}`);
-                }).catch(() => {
-                    alert(`删除失败: ${response.statusText}`);
-                });
-            }
-        })
-        .catch(error => {
-            console.error('删除请求出错:', error);
-            alert('网络或服务器错误，删除失败。请检查控制台。');
-        });
+            .then(response => {
+                if (response.ok) {
+                    alert(`文档 "${docTitle}" 删除成功`);
+                    window.location.reload();
+                } else {
+                    response.text().then(message => {
+                        alert(`删除失败: ${message || response.statusText}`);
+                    });
+                }
+            })
+            .catch(() => alert("网络或服务器错误，删除失败。"));
     }
 </script>
 

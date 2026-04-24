@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh" xmlns:th="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文档任务Agent</title>
+    <link rel="stylesheet" href="/premium.css">
+    <script src="https://unpkg.com/event-source-polyfill/src/eventsource.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+    <div class="main-card chat-shell">
+        <h2 class="title">文档任务Agent</h2>
+        <p class="subtitle" th:text="'当前文档：' + ${documentTitle}">当前文档：sample.pdf</p>
+
+        <div class="actions" style="justify-content:flex-start;">
+            <button id="task-summary" class="btn btn-secondary btn-sm" onclick="runTask('summary')">摘要</button>
+            <button id="task-outline" class="btn btn-secondary btn-sm" onclick="runTask('outline')">提纲</button>
+            <button id="task-risk" class="btn btn-secondary btn-sm" onclick="runTask('risk')">风险审阅</button>
+            <button id="task-qa" class="btn btn-secondary btn-sm" onclick="runTask('qa')">问答</button>
+        </div>
+
+        <div id="chatBox">
+            <div th:each="m : ${messages}">
+                <div th:if="${m.role == 'user'}" class="msg user-msg">
+                    <div class="bubble user-bubble" th:text="${m.message}"></div>
+                </div>
+                <div th:if="${m.role == 'assistant'}" class="msg ai-msg">
+                    <div class="bubble ai-bubble markdown-content" th:text="${m.message}"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <textarea id="msg" placeholder="输入你的任务请求，或直接点击上方任务按钮。"
+                      onkeydown="if(event.keyCode===13 && !event.shiftKey) { event.preventDefault(); sendMsg(false); }"></textarea>
+            <button class="btn" onclick="sendMsg(false)">发送</button>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-danger" onclick="clearChat()">清空会话</button>
+            <a href="/agent/doc"><button type="button" class="btn btn-secondary">返回Agent文档列表</button></a>
+            <a href="/auth/home"><button type="button" class="btn btn-secondary">返回主页</button></a>
+        </div>
+
+        <input type="hidden" id="convId" th:value="${conversationId}">
+        <input type="hidden" id="docId" th:value="${documentId}">
+    </div>
+</div>
+
+<script>
+    marked.setOptions({ gfm: true, breaks: true });
+    let evtSource = null;
+    let currentTask = "summary";
+
+    function selectTask(task) {
+        currentTask = task;
+        const ids = ["summary", "outline", "risk", "qa"];
+        ids.forEach(t => {
+            const button = document.getElementById("task-" + t);
+            button.style.borderColor = (t === task) ? "var(--primary-2)" : "var(--line)";
+            button.style.boxShadow = (t === task) ? "0 0 0 2px rgba(98,228,255,.15)" : "none";
+        });
+    }
+
+    function renderMarkdownTo(el, markdownText) {
+        el.innerHTML = marked.parse(markdownText || "");
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        selectTask("summary");
+        const aiBubbles = document.querySelectorAll(".markdown-content");
+        aiBubbles.forEach(el => renderMarkdownTo(el, el.textContent));
+        const box = document.getElementById("chatBox");
+        box.scrollTop = box.scrollHeight;
+    });
+
+    function sendMsg(forceTaskOnly) {
+        const textArea = document.getElementById("msg");
+        const text = textArea.value.trim();
+        if (!text && !forceTaskOnly) return;
+
+        const convId = document.getElementById("convId").value;
+        const docId = document.getElementById("docId").value;
+        const box = document.getElementById("chatBox");
+        const taskLabelMap = { summary: "摘要", outline: "提纲", risk: "风险审阅", qa: "问答" };
+        const userText = text || "【" + taskLabelMap[currentTask] + "】执行默认任务";
+
+        const userDiv = document.createElement("div");
+        userDiv.className = "msg user-msg";
+        userDiv.innerHTML = `<div class="bubble user-bubble">${userText}</div>`;
+        box.appendChild(userDiv);
+
+        textArea.value = "";
+
+        const aiDiv = document.createElement("div");
+        aiDiv.className = "msg ai-msg";
+        const aiBubble = document.createElement("div");
+        aiBubble.className = "bubble ai-bubble";
+        aiBubble.innerHTML = "<span>...</span>";
+        aiDiv.appendChild(aiBubble);
+        box.appendChild(aiDiv);
+        box.scrollTop = box.scrollHeight;
+
+        if (evtSource) evtSource.close();
+
+        const url = `/agent/doc/ask?conversationId=${convId}&documentId=${docId}&task=${encodeURIComponent(currentTask)}&question=${encodeURIComponent(text)}`;
+        evtSource = new EventSourcePolyfill(url);
+        let full = "";
+
+        evtSource.onmessage = function (event) {
+            if (event.data === "[DONE]") {
+                evtSource.close();
+                evtSource = null;
+                return;
+            }
+            full += event.data;
+            renderMarkdownTo(aiBubble, full);
+            box.scrollTop = box.scrollHeight;
+        };
+
+        evtSource.onerror = function () {
+            full += "\n\n（连接中断或服务异常）";
+            renderMarkdownTo(aiBubble, full);
+            evtSource.close();
+            evtSource = null;
+        };
+    }
+
+    function runTask(task) {
+        selectTask(task);
+        sendMsg(true);
+    }
+
+    function clearChat() {
+        const docId = document.getElementById("docId").value;
+        if (!confirm("确定清空当前 Agent 会话记录吗？")) return;
+
+        if (evtSource) {
+            evtSource.close();
+            evtSource = null;
+        }
+
+        fetch("/agent/doc/clear", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ documentId: docId })
+        }).then(response => {
+            if (response.ok) {
+                window.location.href = `/agent/doc/start?docId=${docId}`;
+            } else {
+                response.text().then(message => alert("清空失败：" + message));
+            }
+        }).catch(() => alert("网络错误，清空失败"));
+    }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh" xmlns:th="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文档任务Agent</title>
+    <link rel="stylesheet" href="/premium.css">
+</head>
+<body class="auth-shell">
+
+<div class="auth-card wide-card">
+    <h2 class="title">文档任务Agent</h2>
+    <p class="subtitle">选择已完成文档，进入 Agent 工作区。</p>
+
+    <div class="table-wrap">
+        <table class="doc-table">
+            <thead>
+            <tr>
+                <th>文档</th>
+                <th>状态</th>
+                <th>上传时间</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:if="${docs.size() == 0}">
+                <td colspan="4" class="empty-tip">暂无文档，请先上传。</td>
+            </tr>
+
+            <tr th:each="doc : ${docs}">
+                <td class="filename-cell" th:text="${doc.title}" th:title="${doc.title}">sample.pdf</td>
+                <td>
+                    <span th:if="${doc.status.name() == 'COMPLETED'}" class="badge badge-success">已完成</span>
+                    <span th:if="${doc.status.name() == 'PROCESSING'}" class="badge badge-warning">处理中</span>
+                    <span th:if="${doc.status.name() == 'PENDING'}" class="badge badge-pending">排队中</span>
+                    <span th:if="${doc.status.name() == 'FAILED'}" class="badge badge-danger">失败</span>
+                </td>
+                <td class="time-cell" th:text="${doc.uploadedAt}" th:title="${doc.uploadedAt}">2025-11-20 14:30</td>
+                <td>
+                    <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/agent/doc/start?docId=' + ${doc.id}}">
+                        <button class="btn btn-success btn-sm">进入Agent</button>
+                    </a>
+                    <button th:unless="${doc.status.name() == 'COMPLETED'}" class="btn btn-secondary btn-sm btn-disabled" disabled>
+                        未就绪
+                    </button>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="linkbar">
+        <a href="/auth/home"><button type="button" class="btn btn-secondary">返回主页</button></a>
+    </div>
+</div>
+
+</body>
+</html>

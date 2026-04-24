@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能工作空间</title>
+    <title>智能工作台</title>
     <link rel="stylesheet" href="/premium.css">
 </head>
 <body>
@@ -20,6 +20,7 @@
                 <a class="nav-link" href="/user/profile"><button class="nav-btn">个人资料维护</button></a>
                 <a class="nav-link" href="/doc/list"><button class="nav-btn">文档列表</button></a>
                 <a class="nav-link" href="/doc/upload"><button class="nav-btn">上传文档</button></a>
+                <a class="nav-link" href="/agent/doc"><button class="nav-btn">文档任务Agent</button></a>
             </div>
 
             <a class="nav-link logout-bottom" href="/auth/logout"><button class="logout-btn">退出登录</button></a>
@@ -64,10 +65,10 @@
         setTimeout(() => {
             const botMsgDiv = document.createElement("div");
             botMsgDiv.className = "msg ai-msg";
-            botMsgDiv.innerHTML = `<div class="bubble ai-bubble">感谢您的提问。由于这是演示页面，我暂时无法给出实际回答。</div>`;
+            botMsgDiv.innerHTML = `<div class="bubble ai-bubble">这是主页演示区。请进入“文档问答”或“文档任务Agent”体验完整能力。</div>`;
             display.appendChild(botMsgDiv);
             display.scrollTop = display.scrollHeight;
-        }, 800);
+        }, 500);
     }
 </script>
 

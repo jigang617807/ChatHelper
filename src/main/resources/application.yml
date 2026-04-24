@@ -19,6 +19,20 @@ spring:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
   elasticsearch:
     uris: ${ES_URIS:http://localhost:9200}
+  ai:
+    model:
+      chat: zhipuai
+      embedding: zhipuai
+    zhipuai:
+      api-key: ${ZHIPU_API_KEY}
+      base-url: ${ZHIPU_BASE_URL:https://open.bigmodel.cn/api/paas}
+      chat:
+        options:
+          model: ${zhipu.chat-model}
+      embedding:
+        options:
+          model: ${zhipu.embedding-model}
+          dimensions: 768
 
 #配置API
 zhipu:

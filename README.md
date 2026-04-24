@@ -1,174 +1,237 @@
-# demo1.0 — Spring Boot RAG 文档问答（PostgreSQL + pgvector + RabbitMQ）
+# ChatHelper
 
-这是一个用于学习/展示 **Java 大模型应用开发（RAG）** 的示例项目：支持用户注册登录、上传 PDF 文档、异步解析与向量入库、基于 **pgvector** 的相似度检索、并以 **SSE 流式输出** 的方式完成文档问答。
+一个基于 Spring Boot 的本地知识库问答示例项目，支持用户系统、PDF 文档上传、异步文档处理、RAG 检索增强问答，以及基于 SSE 的流式对话体验。
 
-> 技术栈：Spring Boot 3.2 + Spring MVC + Spring Data JPA + Thymeleaf + PostgreSQL(pgvector) + RabbitMQ + PDFBox + 智谱 Zhipu SDK
+当前项目已经不是单一的 pgvector 检索版本，而是演进为：
 
----
+- PostgreSQL + pgvector：负责向量召回
+- Elasticsearch：负责 BM25 全文召回
+- RabbitMQ：负责文档解析与入库异步化
+- Zhipu GLM：负责 Embedding 与流式对话生成
 
-## 亮点（可用于简历/面试讲解）
+## 项目功能
 
-1. **pgvector 向量检索落库**：embedding 存 `vector` 字段，检索在数据库侧完成（`ORDER BY embedding <=> query_vector`）。
-2. **企业级异步文档处理**：上传后“秒回”，重任务（解析 PDF → 切块 → embedding → 入库）由 **RabbitMQ** 消费者异步执行，并通过 `DocStatus` 状态机驱动前端展示。
-3. **避免 pgvector 映射坑**：相似度查询只取 `text` 字段，通过 **Interface Projection** 返回，绕开 Hibernate 对 `vector` 列的读取/解析问题。
-4. **对话体验**：SSE 流式输出 + 前端 Markdown 渲染（marked.js）+ 代码高亮（highlight.js）。
-5. **可演进的工程化路线**：当前完成“向量库 + 异步处理”两阶段，后续可继续扩展缓存、重试、观测性、多租户、权限等。
+### 1. 用户与会话
 
----
+- 用户注册、登录、退出登录
+- 基于 Session 的登录态管理
+- 找回密码流程（当前为短信验证码模拟）
+- 个人资料查看与更新
+- 用户头像上传
 
-## 整体流程（端到端）
+对应入口：
 
-### 1) 文档上传与异步入库
+- `/auth/login`
+- `/auth/register`
+- `/auth/reset`
+- `/auth/home`
+- `/user/profile`
 
-1. 用户在 `/doc/upload` 上传 PDF
-2. `DocumentController` 将文件保存到本地 `uploads/docs/`，并调用 `DocumentService.saveDocument(...)`
-3. `DocumentService.saveDocument(...)`
-   - 写入 `Document` 记录（`status=PENDING`）
-   - 向 RabbitMQ 队列 `document.process.queue` 投递消息（docId）
-4. `DocProcessor`（RabbitMQ consumer）监听队列，调用 `DocumentService.processDocumentAsync(docId)`
-5. `processDocumentAsync(...)`
-   - `status=PROCESSING`
-   - PDFBox 抽取文本
-   - `TextSplitter` 递归切块（含 overlap）
-   - 对每个 chunk 调用 `RagService.embedding(text)` 生成向量
-   - 写入 `DocumentChunk(text, embedding(vector))`
-   - `status=COMPLETED`（失败则 `FAILED`）
+### 2. 文档上传与管理
 
-### 2) 文档对话（RAG + 流式输出）
+- 上传 PDF 文档
+- 文档列表展示
+- 文档状态跟踪：`PENDING`、`PROCESSING`、`COMPLETED`、`FAILED`
+- 删除文档时级联清理相关数据
 
-1. 文档完成后，用户进入 `/chat/start?docId=...`
-2. 用户提问：前端通过 SSE 请求 `/chat/ask?conversationId=...&documentId=...&question=...`
-3. `ChatController.ask(...)`
-   - 写入用户消息到 `chat_message`
-   - 调用 `RagService.searchRelevant(documentId, question)`
-4. `RagService.searchRelevant(...)`
-   - 对 `question` 生成 query embedding
-   - 调用 `DocumentChunkRepository.searchSimilar(...)` 进行向量检索（pgvector）
-   - 返回最相关的 chunk 文本（Projection：只包含 `text`）
-5. `ChatController` 拼装 RAG Prompt，调用智谱模型（stream=true）
-6. 后端将 delta 持续写入 SSE；流结束后把最终 AI 回复落库
+删除时会一起清理：
 
----
+- `DocumentChunk`
+- Elasticsearch 中的检索文档
+- 相关对话与聊天记录
+- 本地上传文件
 
-## 架构与模块划分
+对应入口：
 
-### 目录结构（核心）
+- `GET /doc/upload`
+- `POST /doc/upload`
+- `GET /doc/list`
+- `POST /doc/delete`
 
-```
-src/main/java/com/example/demo
-  ├─ controller
-  │   ├─ AuthController.java        # 登录/注册/找回密码/主页
-  │   ├─ UserController.java        # 个人资料、头像上传
-  │   ├─ DocumentController.java    # 文档上传、列表、删除
-  │   └─ ChatController.java        # 文档对话（SSE 流式）+ 清空对话
-  ├─ service
-  │   ├─ DocumentService.java       # 文档状态机、切分、入库、级联删除
-  │   ├─ DocProcessor.java          # RabbitMQ 消费者
-  │   ├─ RagService.java            # embedding 生成 + 向量检索
-  │   └─ UserService.java           # 用户相关
-  ├─ repository
-  │   ├─ DocumentRepository.java
-  │   ├─ DocumentChunkRepository.java      # pgvector native query
-  │   ├─ DocumentChunkProjection.java      # 只返回 text
-  │   ├─ ConversationRepository.java
-  │   └─ ChatMessageRepository.java
-  ├─ entity
-  │   ├─ User.java
-  │   ├─ Document.java              # 含 DocStatus
-  │   ├─ DocStatus.java
-  │   ├─ DocumentChunk.java          # embedding(vector)
-  │   ├─ Conversation.java
-  │   └─ ChatMessage.java
-  ├─ utils/TextSplitter.java         # 递归切块 + overlap
-  └─ config
-      ├─ RabbitConfig.java           # 队列定义
-      ├─ StaticResourceConfig.java   # /uploads/** 静态资源映射
-      └─ WebConfig.java              # 兼容相对路径的 /uploads/** 映射
+### 3. RAG 文档问答
 
-src/main/resources
-  ├─ application.yml
-  ├─ templates
-  │   ├─ login.html / register.html / home.html / profile.html ...
-  │   ├─ upload.html                # 上传 PDF
-  │   ├─ doc_list.html              # 文档状态列表
-  │   └─ chat.html                  # SSE + Markdown 渲染
-  └─ static
-      ├─ style.css
-      └─ apple_style.css
-```
+项目实现了一个混合检索版 RAG 流程：
 
-### 核心组件关系（Mermaid）
+1. 文档上传后进入异步处理队列
+2. 后台解析 PDF 文本
+3. 文本按 chunk 切分
+4. 调用 Embedding 模型生成向量
+5. 向量写入 PostgreSQL / pgvector
+6. chunk 文本同步写入 Elasticsearch
+7. 提问时同时做向量召回和 BM25 召回
+8. 对两路结果做融合后生成上下文
+9. 调用 GLM 流式输出回答
 
-```mermaid
-flowchart LR
-  UI[Thymeleaf UI] -->|HTTP| DocCtl[DocumentController]
-  UI -->|SSE| ChatCtl[ChatController]
+### 4. 混合检索策略
 
-  DocCtl --> DocSvc[DocumentService]
-  DocSvc -->|send docId| MQ[(RabbitMQ: document.process.queue)]
-  MQ --> Consumer[DocProcessor]
-  Consumer --> DocSvc
+当前 `RagService` 里已经实现：
 
-  DocSvc --> PDF[PDFBox]
-  DocSvc --> Split[TextSplitter]
-  DocSvc --> Rag[RagService]
-  Rag --> Zhipu[Zhipu SDK]
+- 向量召回
+- BM25 召回
+- RRF 融合
+- 加权融合
+- 可切换 rerank 开关（当前为透传占位）
 
-  DocSvc --> PG[(PostgreSQL + pgvector)]
-  ChatCtl --> Rag
-  Rag --> PG
-```
+相关配置位于 `application.yml`：
 
----
+- `rag.retrieval.vector-topk`
+- `rag.retrieval.bm25-topk`
+- `rag.retrieval.final-topk`
+- `rag.retrieval.fusion.strategy`
+- `rag.retrieval.fusion.rrf-k`
+- `rag.retrieval.fusion.vector-weight`
+- `rag.retrieval.fusion.bm25-weight`
+- `rag.retrieval.rerank.enabled`
 
-## 环境准备与运行
+### 5. 流式对话体验
 
-### 0) 必要前置
+聊天接口使用 SSE：
 
-- JDK 17+（建议 17 或 21）
-- Maven（或用 IntelliJ 的 Maven）
-- Docker（用于 PostgreSQL/pgvector 与 RabbitMQ）
-- 智谱 API Key（环境变量）
+- `GET /chat/start?docId=...`
+- `GET /chat/ask?conversationId=...&documentId=...&question=...`
+- `POST /chat/clear`
 
-### 1) 启动 PostgreSQL + pgvector（Docker）
+主要能力：
+
+- 按文档维度恢复历史会话
+- 聊天记录持久化
+- 流式返回模型输出
+- 支持 Markdown 渲染
+- 对模型流式片段做规范化处理，避免前端渲染异常
+
+## 核心流程
+
+### 文档处理链路
+
+1. 用户上传 PDF
+2. `DocumentController` 保存文件到本地 `uploads/docs/`
+3. `DocumentService.saveDocument(...)` 写入文档记录
+4. 系统向 RabbitMQ 队列发送 `docId`
+5. `DocProcessor` 消费消息并触发异步处理
+6. `DocumentService.processDocumentAsync(...)` 完成解析、切块、Embedding、入库与状态更新
+
+### 问答链路
+
+1. 用户进入文档聊天页
+2. 提交问题到 `/chat/ask`
+3. `ChatController` 校验文档归属
+4. `RagService.searchRelevant(...)` 做混合召回
+5. 将召回内容拼接为 RAG Prompt
+6. 调用 GLM 流式接口
+7. 回答通过 SSE 持续返回给前端
+8. 最终回答写入聊天记录表
+
+## 主要模块
+
+### controller
+
+- `AuthController`：注册、登录、找回密码、首页
+- `UserController`：个人资料、头像上传
+- `DocumentController`：文档上传、列表、删除
+- `ChatController`：文档会话、SSE 问答、清空聊天记录
+
+### service
+
+- `UserService`：用户相关业务
+- `DocumentService`：文档保存、状态管理、切块、入库、删除
+- `DocProcessor`：RabbitMQ 消费者
+- `RagService`：Embedding、向量召回、BM25 召回、融合检索
+
+### repository
+
+- `DocumentRepository`
+- `DocumentChunkRepository`
+- `DocumentChunkProjection`
+- `DocumentChunkVectorHitProjection`
+- `ConversationRepository`
+- `ChatMessageRepository`
+- `UserRepository`
+- `ChunkSearchRepository`
+
+### search
+
+- `ChunkSearchDoc`：Elasticsearch 索引文档，索引名为 `document_chunk`
+- `ChunkSearchRepository`：Spring Data Elasticsearch Repository
+
+## 技术栈
+
+- Java 17+
+- Spring Boot 3
+- Spring MVC
+- Spring Data JPA
+- Thymeleaf
+- PostgreSQL
+- pgvector
+- Elasticsearch
+- RabbitMQ
+- PDFBox
+- Reactor Flux
+- Zhipu OpenAPI SDK
+
+## 运行前准备
+
+### 1. PostgreSQL + pgvector
+
+项目默认数据库配置：
+
+- `DB_URL=jdbc:postgresql://localhost:5432/rag_demo`
+- `DB_USERNAME=postgres`
+- `DB_PASSWORD=postgres`
+
+建议先创建数据库并启用 `vector` 扩展。
+
+Docker 示例：
 
 ```bash
 docker run -d --name pgvector-demo \
   -e POSTGRES_PASSWORD=postgres \
   -p 5432:5432 \
   pgvector/pgvector:pg16
+```
 
-docker exec -it pgvector-demo psql -U postgres
+进入数据库后执行：
 
--- 进入 psql 后执行：
+```sql
 CREATE DATABASE rag_demo;
 \c rag_demo
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-### 2) 启动 RabbitMQ（Docker）
+### 2. Elasticsearch
+
+项目默认读取：
+
+- `ES_URIS=http://localhost:9200`
+
+这是通过 Spring Boot 自动装配接入的，没有单独手写 ES 配置类。
+
+### 3. RabbitMQ
+
+Docker 示例：
 
 ```bash
 docker run -d --name rabbitmq-demo \
-  -p 5672:5672 -p 15672:15672 \
+  -p 5672:5672 \
+  -p 15672:15672 \
   rabbitmq:3-management
 ```
 
-管理后台：`http://localhost:15672`（默认账号/密码一般为 `guest/guest`）。
+管理后台：
 
-### 3) 配置环境变量
+- [http://localhost:15672](http://localhost:15672)
 
-本项目 **不在仓库中存任何 API Key**，请用环境变量注入：
+### 4. 大模型配置
 
-- `ZHIPU_API_KEY`：智谱 API Key
+需要环境变量：
 
-数据库也支持环境变量覆盖（application.yml 已做占位符）：
+- `ZHIPU_API_KEY`
 
-- `DB_URL`（默认：`jdbc:postgresql://localhost:5432/rag_demo`）
-- `DB_USERNAME`（默认：`postgres`）
-- `DB_PASSWORD`（默认：`postgres`）
+当前 `application.yml` 中的模型配置：
 
-### 4) 启动应用
+- `zhipu.embedding-model=embedding-3`
+- `zhipu.chat-model=glm-4.7-flash`
+
+## 本地启动
 
 ```bash
 mvn spring-boot:run
@@ -176,96 +239,75 @@ mvn spring-boot:run
 
 启动后访问：
 
-- 登录页：`http://localhost:8080/auth/login`
-- 文档上传：`http://localhost:8080/doc/upload`
-- 文档列表：`http://localhost:8080/doc/list`
+- 登录页：[http://localhost:8080/auth/login](http://localhost:8080/auth/login)
+- 上传页：[http://localhost:8080/doc/upload](http://localhost:8080/doc/upload)
+- 文档列表：[http://localhost:8080/doc/list](http://localhost:8080/doc/list)
 
----
+## 配置说明
 
-## 使用指南
+`src/main/resources/application.yml` 里当前关键配置包括：
 
-1. 注册并登录
-2. 上传 PDF（上传后会立刻返回文档列表）
-3. 在文档列表观察状态：`PENDING/PROCESSING/COMPLETED/FAILED`
-4. 状态为 `COMPLETED` 后点击“开始对话”进入聊天页
-5. 进行文档问答（SSE 流式输出），支持 Markdown
-6. 可在聊天页点击“清除记录”（删除该文档关联对话与消息）
-7. 可在文档列表删除文档（级联删除 chunks + 对话 + 消息 + 本地文件）
+### 数据源
 
----
+```yml
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/rag_demo}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+```
 
-## 路由与接口一览（便于复现/联调）
+### Elasticsearch
 
-### 认证与主页（`/auth`）
+```yml
+spring:
+  elasticsearch:
+    uris: ${ES_URIS:http://localhost:9200}
+```
 
-| Method | Path | 说明 |
-|---|---|---|
-| GET | `/auth/login` | 登录页 |
-| GET | `/auth/register` | 注册页 |
-| GET | `/auth/reset` | 重置密码页 |
-| GET | `/auth/home` | 主页（依赖 Session `uid`） |
-| POST | `/auth/register-page` | 提交注册 |
-| POST | `/auth/login-page` | 提交登录（成功后写 Session：`uid/username/avatarPath`） |
-| GET | `/auth/sms` | 发送“模拟验证码”（用于找回密码流程） |
-| POST | `/auth/reset-password` | 提交新密码 |
-| GET | `/auth/logout` | 退出登录 |
+### 上传目录
 
-### 文档（`/doc`）
+```yml
+upload:
+  dir: .
+  root: uploads/
+  avatar: uploads/avatar/
+  docs: uploads/docs/
+```
 
-| Method | Path | 说明 |
-|---|---|---|
-| GET | `/doc/upload` | 上传页 |
-| POST | `/doc/upload` | 上传 PDF（保存文件后投递 MQ，立即返回） |
-| GET | `/doc/list` | 文档列表（含状态机展示） |
-| POST | `/doc/delete` | 删除文档（级联删除 chunks/对话/消息/本地文件） |
+### 检索参数
 
-### 对话（`/chat`）
+```yml
+rag:
+  retrieval:
+    vector-topk: ${RAG_VECTOR_TOPK:20}
+    bm25-topk: ${RAG_BM25_TOPK:20}
+    final-topk: ${RAG_FINAL_TOPK:5}
+```
 
-| Method | Path | 说明 |
-|---|---|---|
-| GET | `/chat/start?docId=...` | 进入/恢复对话页 |
-| GET | `/chat/ask?conversationId=...&documentId=...&question=...` | SSE 流式回答（`text/event-stream`） |
-| POST | `/chat/clear` | 清空该文档关联的对话与消息 |
+## 当前项目特点
 
-### 用户（`/user`）
+- 从同步处理演进为 RabbitMQ 异步处理
+- 从单路向量检索演进为 pgvector + Elasticsearch 混合召回
+- 支持文档级会话隔离
+- 支持流式输出和聊天记录持久化
+- 支持本地文件与数据库记录联动清理
 
-| Method | Path | 说明 |
-|---|---|---|
-| GET | `/user/profile` | 个人资料页 |
-| POST | `/user/update` | 更新个人资料 |
-| POST | `/user/avatar` | 上传头像（保存到 `uploads/avatar/` 并更新 DB + Session） |
+## 已知现状
 
----
+- 仓库里存在 `templates副本`、`templates副本2` 这类备份模板目录，当前主程序实际使用的是 `src/main/resources/templates/`
+- `rerank` 配置已经预留，但当前 `RagService` 里还是透传占位实现
+- README 现在按当前代码更新，但如果后续再改检索链路，建议同步维护
 
-## 关键实现说明（踩坑点与解决方案）
+## 适合继续扩展的方向
 
-### 1) pgvector 查询不要把 vector 列读回 Java
-
-在 `DocumentChunkRepository.searchSimilar(...)` 中，native query **只 SELECT text**，用 `DocumentChunkProjection` 接收。
-
-原因：JPA/Hibernate 在处理 `vector` 列时容易出现 JDBC/类型转换问题（例如 `cannot cast type record to vector`）。
-
-### 2) 文档处理必须异步化
-
-PDF 解析与 embedding 都是重任务，若放在上传接口同步执行，会导致：
-
-- 接口超时
-- 用户体验差
-- 并发下容易拖垮应用
-
-因此采用 MQ（RabbitMQ）将处理流程异步化，并用 `DocStatus` 给 UI 可视化反馈。
-
----
-
-## 安全建议
-
-- **不要**提交 `.idea/`、`target/`、`uploads/`、`.env`、任何包含 token 的文件（本仓库已通过 `.gitignore` 避免）。
-- 若你曾在本地或历史文件中暴露过 API Key：
-  - 立即在平台侧 **轮转/重置** Key
-  - 避免把 Key 写入代码/注释/IDE 配置（例如 IntelliJ Run Configuration 会写入 `.idea/workspace.xml`）
-
----
+- 接入真正的短信服务替代模拟验证码
+- 给 MQ 消费失败增加重试和死信队列
+- 为 Elasticsearch 建立更完整的索引生命周期管理
+- 加入管理员视图、审计日志和多用户权限控制
+- 为 RAG 检索增加 rerank 模型
+- 补充自动化测试和部署说明
 
 ## License
 
-学习用途示例项目。
+本项目主要用于学习、课程设计与功能演示。

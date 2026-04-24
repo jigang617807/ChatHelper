@@ -41,15 +41,12 @@
                             <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/chat/start?docId=' + ${doc.id}}">
                                 <button class="btn btn-success btn-sm">开始问答</button>
                             </a>
-
                             <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/agent/doc/start?docId=' + ${doc.id}}">
                                 <button class="btn btn-secondary btn-sm">打开 Agent</button>
                             </a>
-
                             <button th:unless="${doc.status.name() == 'COMPLETED'}" class="btn btn-secondary btn-sm btn-disabled" disabled>
                                 准备中
                             </button>
-
                             <button class="btn btn-danger btn-sm" th:attr="onclick=|confirmDelete(${doc.id}, '${doc.title}')|">删除</button>
                         </div>
                     </div>
@@ -70,18 +67,24 @@
         if (hasPending) {
             setTimeout(() => window.location.reload(), 2000);
         }
+
+        // 鼠标滚轮在操作列区域内可横向滑动
+        document.querySelectorAll(".doc-actions-scroll").forEach(el => {
+            el.addEventListener("wheel", function (event) {
+                if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+                    this.scrollLeft += event.deltaY;
+                    event.preventDefault();
+                }
+            }, { passive: false });
+        });
     });
 
     function confirmDelete(docId, docTitle) {
-        if (!confirm(`确定要删除文档 "${docTitle}" (ID: ${docId}) 吗？`)) {
-            return;
-        }
+        if (!confirm(`确定要删除文档 "${docTitle}" (ID: ${docId}) 吗？`)) return;
 
         fetch("/doc/delete", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded"
-            },
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({ docId: docId })
         })
             .then(response => {
@@ -89,9 +92,7 @@
                     alert(`文档 "${docTitle}" 删除成功`);
                     window.location.reload();
                 } else {
-                    response.text().then(message => {
-                        alert(`删除失败: ${message || response.statusText}`);
-                    });
+                    response.text().then(message => alert(`删除失败: ${message || response.statusText}`));
                 }
             })
             .catch(() => alert("网络或服务器错误，删除失败。"));

@@ -1,4 +1,6 @@
 spring:
+  thymeleaf:
+    cache: false
   # ------ 新增配置开始 ------
   servlet:
     multipart:

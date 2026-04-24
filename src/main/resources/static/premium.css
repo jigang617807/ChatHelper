@@ -235,44 +235,51 @@ th { background: rgba(126,162,255,.22); color: #e0e9ff; }
 .doc-table .filename-cell { text-align: left; }
 .doc-table .time-cell { font-variant-numeric: tabular-nums; }
 
-.doc-table th:nth-child(1), .doc-table td:nth-child(1) { width: 42%; }
+.doc-table th:nth-child(1), .doc-table td:nth-child(1) { width: 38%; }
 .doc-table th:nth-child(2), .doc-table td:nth-child(2) { width: 16%; }
 .doc-table th:nth-child(3), .doc-table td:nth-child(3) { width: 24%; }
-.doc-table th:nth-child(4), .doc-table td:nth-child(4) { width: 18%; }
+.doc-table th:nth-child(4), .doc-table td:nth-child(4) { width: 22%; }
 
 .doc-table .actions-cell {
   overflow: visible;
   text-overflow: clip;
+  padding: 8px 6px;
 }
 
 .doc-actions-scroll {
-  width: 100%;
-  max-width: 220px;
+  width: 168px;
+  max-width: none;
   margin: 0 auto;
   overflow-x: scroll;
   overflow-y: hidden;
+  -ms-overflow-style: scrollbar;
+  scrollbar-width: thin;
   scrollbar-gutter: stable both-edges;
-  padding-bottom: 6px;
+  padding-bottom: 4px;
 }
 
 .doc-actions-inner {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-width: max-content;
+  min-width: fit-content;
+}
+
+.doc-actions-inner .btn {
+  white-space: nowrap;
 }
 
 .doc-actions-scroll::-webkit-scrollbar {
-  height: 6px;
+  height: 8px;
 }
 
 .doc-actions-scroll::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
 }
 
 .doc-actions-scroll::-webkit-scrollbar-thumb {
-  background: rgba(126, 162, 255, 0.65);
+  background: rgba(126, 162, 255, 0.9);
   border-radius: 999px;
 }
 

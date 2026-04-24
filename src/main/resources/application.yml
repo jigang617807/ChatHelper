@@ -1,35 +1,52 @@
 spring:
-# ------ 新增配置开始 ------
+  # ------ 新增配置开始 ------
   servlet:
     multipart:
       max-file-size: 50MB      # 单个文件最大 50MB (按需调整)
       max-request-size: 50MB   # 整个请求最大 50MB
-# ------ 新增配置结束 ------
-#  链接数据库
+  # ------ 新增配置结束 ------
+  #  链接数据库
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/rag_demo}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
-#定义是否由其自动生成数据库！
+  #定义是否由其自动生成数据库！
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: true
     database-platform: org.hibernate.dialect.PostgreSQLDialect
-#配置API
+  elasticsearch:
+    uris: ${ES_URIS:http://localhost:9200}
 
+#配置API
 zhipu:
-#  embedding模型都要花钱！
+  #  embedding模型都要花钱！
   embedding-model: "embedding-3"
-#  花钱模型
-#  chat-model: "glm-4-plus"
-#  免费模型
-  chat-model: "glm-4.5-flash"
+  #  花钱模型
+  #  chat-model: "glm-4-plus"
+  #  免费模型
+  #  chat-model: "glm-4.5-flash" 过期了！
+  #  chat-model: "glm-4.6v-flash"
+  chat-model: "glm-4.7-flash"
 
 upload:
-#  dir: D:/javalearning/demo
+  #  dir: D:/javalearning/demo
   dir: .
   root: uploads/
   avatar: uploads/avatar/
   docs: uploads/docs/
+
+rag:
+  retrieval:
+    vector-topk: ${RAG_VECTOR_TOPK:20}
+    bm25-topk: ${RAG_BM25_TOPK:20}
+    final-topk: ${RAG_FINAL_TOPK:5}
+    fusion:
+      strategy: ${RAG_FUSION_STRATEGY:rrf}
+      rrf-k: ${RAG_FUSION_RRF_K:60}
+      vector-weight: ${RAG_FUSION_VECTOR_WEIGHT:0.6}
+      bm25-weight: ${RAG_FUSION_BM25_WEIGHT:0.4}
+    rerank:
+      enabled: ${RAG_RERANK_ENABLED:false}

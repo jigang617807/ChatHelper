@@ -21,5 +21,9 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
     // 修改为只查询 text 字段，避免 vector 类型映射错误，并使用 Interface Projection 返回
     @Query(value = "SELECT text FROM document_chunk WHERE document_id = :docId ORDER BY embedding <=> cast(cast(:queryVector as text) as vector) LIMIT :limit", nativeQuery = true)
     List<DocumentChunkProjection> searchSimilar(@Param("docId") Long docId, @Param("queryVector") String queryVector, @Param("limit") int limit);
-}
 
+    @Query(value = "SELECT id, text, (embedding <=> cast(cast(:queryVector as text) as vector)) AS distance FROM document_chunk WHERE document_id = :docId ORDER BY embedding <=> cast(cast(:queryVector as text) as vector) LIMIT :limit", nativeQuery = true)
+    List<DocumentChunkVectorHitProjection> searchSimilarWithDistance(@Param("docId") Long docId,
+                                                                     @Param("queryVector") String queryVector,
+                                                                     @Param("limit") int limit);
+}

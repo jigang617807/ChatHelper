@@ -92,15 +92,23 @@ public class DocumentController {
 
     //申请删除
     @PostMapping("/delete")
-    public ResponseEntity<String> deleteDocumentAndRelatedData(@RequestParam("docId") Long docId) {
+    public ResponseEntity<String> deleteDocumentAndRelatedData(@RequestParam("docId") Long docId,
+                                                                HttpSession session) {
         // 1. 参数校验
         if (docId == null) {
             // 返回 400 Bad Request 状态码
             return ResponseEntity.badRequest().body("文档ID不能为空。");
         }
+        Long uid = (Long) session.getAttribute("uid");
+        if (uid == null) {
+            return ResponseEntity.status(401).body("用户未登录或会话已过期。");
+        }
         try {
             // 2. 调用 Service 层处理业务逻辑（包含事务、多表删除和本地文件删除）
-            docService.deleteDocumentWithRelatedData(docId);
+            // OLD: 未校验文档归属，可能被越权删除
+            // docService.deleteDocumentWithRelatedData(docId);
+            // NEW: 传入 uid 做归属校验
+            docService.deleteDocumentWithRelatedData(docId, uid);
 
             // 3. 成功响应
             // 返回 200 OK 状态码，前端的 .then(response => { if (response.ok) ... }) 将会捕获到

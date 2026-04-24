@@ -1,133 +1,5 @@
-/*package com.example.demo.controller;
-
-import com.example.demo.repository.DocumentChunkProjection;
-import com.example.demo.entity.ChatMessage;
-import com.example.demo.entity.Conversation;
-import com.example.demo.entity.DocumentChunk;
-import com.example.demo.repository.ChatMessageRepository;
-import com.example.demo.repository.ConversationRepository;
-import com.example.demo.service.RagService;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.http.HttpSession;
-import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
-
-import java.util.List;
-
-@Controller
-@RequestMapping("/chat")
-@RequiredArgsConstructor
-
-public class ChatController {
-
-    private final ConversationRepository convRepo;
-    private final ChatMessageRepository msgRepo;
-    private final RagService ragService;
-
-    @Value("${zhipu.api-key}")
-    private String apiKey;
-
-    @Value("${zhipu.chat-model}")
-    private String chatModel;
-
-    private final WebClient webClient = WebClient.builder()
-            .baseUrl("https://open.bigmodel.cn/api/paas/v4/chat/completions")
-            .build();
-
-    @GetMapping("/start")
-    public String start(@RequestParam Long docId,
-                        HttpSession session,
-                        Model model) {
-
-        Long uid=(Long)session.getAttribute("uid");
-
-        Conversation conv=new Conversation();
-        conv.setUserId(uid);
-        conv.setTitle("Doc-"+docId+" 对话");
-        convRepo.save(conv);
-
-        model.addAttribute("conversationId", conv.getId());
-        model.addAttribute("documentId", docId);
-        model.addAttribute("messages",
-                msgRepo.findByConversationId(conv.getId()));
-
-        return "chat";
-    }
-
-    @PostMapping("/ask")
-    @ResponseBody
-
-    public String ask(@RequestParam Long conversationId,
-                      @RequestParam Long documentId,
-                      @RequestParam String question){
-
-        // 保存用户问题
-        ChatMessage m1=new ChatMessage();
-        m1.setConversationId(conversationId);
-        m1.setRole("user");
-        m1.setMessage(question);
-        msgRepo.save(m1);
-
-        // RAG 检索
-        // List<DocumentChunk> chunks = ragService.searchRelevant(documentId, question);
-        List<DocumentChunkProjection> chunks = ragService.searchRelevant(documentId, question);
-        StringBuilder context=new StringBuilder();
-        for(DocumentChunkProjection c:chunks) context.append(c.getText()).append("\n");
-
-        String prompt="相关内容：\n"+context+
-                "\n请根据以上内容回答问题："+question;
-
-        // 调智谱 GLM
-        String body = String.format("""
-                {
-                  "model": "%s",
-                  "messages": [
-                    {"role":"user", "content":"%s"}
-                  ]
-                }
-                """, chatModel, prompt.replace("\"","'"));
-
-        ZhipuChatResponse resp = webClient.post()
-                .header("Authorization","Bearer "+apiKey)
-                .header("Content-Type","application/json")
-                .body(Mono.just(body), String.class)
-                .retrieve()
-                .bodyToMono(ZhipuChatResponse.class)
-                .block();
-
-        String answer = resp.output();
-
-        // 保存 AI 回复
-        ChatMessage m2=new ChatMessage();
-        m2.setConversationId(conversationId);
-        m2.setRole("assistant");
-        m2.setMessage(answer);
-        msgRepo.save(m2);
-
-        return answer;
-    }
-
-
-
-
-
-    record ZhipuChatResponse(List<Choice> choices){
-        public String output(){
-            return choices.get(0).message().content();
-        }
-    }
-    record Choice(Message message){}
-    record Message(String role, String content){}
-}
-*/
-
 package com.example.demo.controller;
+
 import ai.z.openapi.ZhipuAiClient;
 import ai.z.openapi.service.model.ChatCompletionCreateParams;
 import ai.z.openapi.service.model.ChatCompletionResponse;
@@ -138,6 +10,7 @@ import com.example.demo.entity.Conversation;
 import com.example.demo.entity.DocumentChunk;
 import com.example.demo.repository.ChatMessageRepository;
 import com.example.demo.repository.ConversationRepository;
+import com.example.demo.repository.DocumentRepository;
 import com.example.demo.service.RagService;
 import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
@@ -152,7 +25,6 @@ import java.util.ArrayList;
 import java.util.List;
 import com.example.demo.repository.DocumentChunkProjection;
 
-
 @Controller
 @RequestMapping("/chat")
 @RequiredArgsConstructor
@@ -161,6 +33,7 @@ public class ChatController {
     private final ConversationRepository convRepo;
     private final ChatMessageRepository msgRepo;
     private final RagService ragService;
+    private final DocumentRepository documentRepository;
 
     @Value("${ZHIPU_API_KEY}")
     private String apiKey;
@@ -173,8 +46,8 @@ public class ChatController {
      */
     @GetMapping("/start")
     public String start(@RequestParam Long docId,
-                        HttpSession session,
-                        Model model) {
+            HttpSession session,
+            Model model) {
 
         Long uid = (Long) session.getAttribute("uid");
         String title = "Doc-" + docId + " 对话";
@@ -203,7 +76,7 @@ public class ChatController {
     @ResponseBody
     @Transactional
     public ResponseEntity<String> clearConversation(@RequestParam("documentId") Long documentId,
-                                                    HttpSession session) {
+            HttpSession session) {
 
         Long uid = (Long) session.getAttribute("uid");
         if (uid == null) {
@@ -239,33 +112,34 @@ public class ChatController {
         }
     }
 
-
     /**
      * 流式回答（SSE） + 写入数据库
      */
 
-
-// ... imports ...
+    // ... imports ...
 
     @GetMapping(value = "/ask", produces = "text/event-stream")
     @ResponseBody
     public Flux<String> ask(@RequestParam Long conversationId,
-                            @RequestParam Long documentId,
-                            @RequestParam String question) {
+            @RequestParam Long documentId,
+            @RequestParam String question,
+            HttpSession session) {
 
-        Long uid = conversationId; // 已在外部写入
-
-        // 1. 保存用户消息到数据库
-        {
-            com.example.demo.entity.ChatMessage m = new com.example.demo.entity.ChatMessage();
-            m.setConversationId(conversationId);
-            m.setRole("user");
-            m.setMessage(question);
-            msgRepo.save(m);
+        Long uid = (Long) session.getAttribute("uid");
+        if (uid == null) {
+            return Flux.just("data:【错误】用户未登录或会话已过期");
         }
 
-        // 2. 检索 RAG chunk
-        // ❌ 旧代码: List<DocumentChunk> chunks = ragService.searchRelevant(documentId, question);
+        // OLD: 仅依赖前端传入 documentId，没有归属校验
+        // NEW: 校验文档必须属于当前登录用户
+        boolean owned = documentRepository.existsByIdAndUserId(documentId, uid);
+        if (!owned) {
+            return Flux.just("data:【错误】无权访问该文档");
+        }
+
+        // 1. 检索 RAG chunk
+        // ❌ 旧代码: List<DocumentChunk> chunks = ragService.searchRelevant(documentId,
+        // question);
         // ✅ 新代码: 使用投影接口
         List<DocumentChunkProjection> chunks = ragService.searchRelevant(documentId, question);
 
@@ -273,16 +147,13 @@ public class ChatController {
         for (DocumentChunkProjection c : chunks) {
             context.append(c.getText()).append("\n");
         }
-        
-        // ... (后续代码不变)
 
         String ragPrompt = "相关内容：\n" + context +
                 "\n请根据以上内容回答问题：" + question;
 
-        // ---- 3. 拼历史对话（写入 SDK 格式 ChatMessage） ----
+        // ---- 2. 先拼历史（不包含本轮问题，避免重复注入） ----
         List<ChatMessage> his = new ArrayList<>();
 
-        // 加入之前的历史对话（数据库里的）
         msgRepo.findByConversationId(conversationId).forEach(m -> {
             his.add(ChatMessage.builder()
                     .role(m.getRole())
@@ -290,11 +161,20 @@ public class ChatController {
                     .build());
         });
 
-        // 当前用户问题追加
+        // 当前轮只追加一条 RAG 增强后的用户消息
         his.add(ChatMessage.builder()
                 .role(ChatMessageRole.USER.value())
                 .content(ragPrompt)
                 .build());
+
+        // 3. 保存原始用户问题到数据库（放在读取历史之后，避免本轮重复）
+        {
+            com.example.demo.entity.ChatMessage m = new com.example.demo.entity.ChatMessage();
+            m.setConversationId(conversationId);
+            m.setRole("user");
+            m.setMessage(question);
+            msgRepo.save(m);
+        }
 
         // ---- 4. 调用 GLM 流式接口 ----
         ZhipuAiClient client = ZhipuAiClient.builder()
@@ -313,40 +193,59 @@ public class ChatController {
         StringBuilder finalReply = new StringBuilder();
 
         // ---- 5. SSE + 保存数据库 ----
-        return Flux.create(sink ->
-                resp.getFlowable().subscribe(
-                        delta -> {
-                            if (delta.getChoices() != null &&
-                                    !delta.getChoices().isEmpty()) {
+        return Flux.create(sink -> resp.getFlowable().subscribe(
+                delta -> {
+                    if (delta.getChoices() != null &&
+                            !delta.getChoices().isEmpty()) {
 
-                                Delta d = delta.getChoices().get(0).getDelta();
-                                if (d != null && d.getContent() != null) {
+                        Delta d = delta.getChoices().get(0).getDelta();
+                        if (d != null && d.getContent() != null) {
 
-                                    String chunk = d.getContent().toString();
-                                    finalReply.append(chunk);
+                            // OLD: 直接 toString() 可能包含 JSON 包裹引号与转义，导致前端实时 Markdown 渲染异常
+                            // String chunk = d.getContent().toString();
+                            // NEW: 规范化流式片段，保证前端拿到可直接拼接渲染的文本
+                            String chunk = normalizeDeltaContent(d.getContent());
+                            finalReply.append(chunk);
 
-                                    sink.next(  chunk );
-                                }
-                            }
-                        },
-                        err -> {
-                            sink.next("data:【错误】" + err.getMessage());
-                            sink.complete();
-                        },
-                        () -> {
-                            // SSE 结束：保存最终 AI 回复
-                            com.example.demo.entity.ChatMessage ai =
-                                    new com.example.demo.entity.ChatMessage();
-
-                            ai.setConversationId(conversationId);
-                            ai.setRole("assistant");
-                            ai.setMessage(finalReply.toString());
-                            msgRepo.save(ai);
-
-                            sink.next("[DONE]");
-                            sink.complete();
+                            sink.next(chunk);
                         }
-                )
-        );
+                    }
+                },
+                err -> {
+                    sink.next("data:【错误】" + err.getMessage());
+                    sink.complete();
+                },
+                () -> {
+                    // SSE 结束：保存最终 AI 回复
+                    com.example.demo.entity.ChatMessage ai = new com.example.demo.entity.ChatMessage();
+
+                    ai.setConversationId(conversationId);
+                    ai.setRole("assistant");
+                    ai.setMessage(finalReply.toString());
+                    msgRepo.save(ai);
+
+                    sink.next("[DONE]");
+                    sink.complete();
+                }));
+    }
+
+
+
+
+    private String normalizeDeltaContent(Object content) {
+        if (content == null) {
+            return "";
+        }
+        String s = String.valueOf(content);
+
+        // 处理 JSON 字符串包裹场景："..."
+        if (s.length() >= 2 && s.startsWith("\"") && s.endsWith("\"")) {
+            s = s.substring(1, s.length() - 1)
+                    .replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\");
+        }
+        return s;
     }
 }

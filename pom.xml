@@ -81,6 +81,12 @@
             <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
 
+        <!-- Elasticsearch 检索（BM25） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-elasticsearch</artifactId>
+        </dependency>
+
         <!-- Lombok（让代码更简洁，可选） -->
         <dependency>
             <groupId>org.projectlombok</groupId>

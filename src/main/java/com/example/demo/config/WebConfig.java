@@ -6,21 +6,6 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.io.File;
-/*
-@Configuration
-public class WebConfig implements WebMvcConfigurer {
-
-    @Value("${upload.dir}")
-    private String uploadDir;
-
-    @Override
-    public void addResourceHandlers(ResourceHandlerRegistry registry) {
-
-        //   /uploads/** → D:/javalearning/demo/uploads/
-        registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:" + uploadDir + "/uploads/");
-    }
-}*/
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
@@ -40,7 +25,7 @@ public class WebConfig implements WebMvcConfigurer {
         }
 
         // 3. 映射路径
-        // 最终效果：/uploads/** ->  file:D:/javalearning/demo/uploads/
+        // 最终效果：/uploads/** -> file:D:/javalearning/demo/uploads/
         registry.addResourceHandler("/uploads/**")
                 .addResourceLocations("file:" + absolutePath + "uploads/");
     }

@@ -9,6 +9,8 @@ import com.example.demo.repository.ChatMessageRepository;
 import com.example.demo.repository.ConversationRepository;
 import com.example.demo.repository.DocumentChunkRepository;
 import com.example.demo.repository.DocumentRepository;
+import com.example.demo.search.ChunkSearchDoc;
+import com.example.demo.search.ChunkSearchRepository;
 import com.example.demo.utils.TextSplitter;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,6 +34,7 @@ public class DocumentService {
     private final DocumentRepository docRepo;
     private final DocumentChunkRepository chunkRepo;
     private final RagService ragService;
+    private final ChunkSearchRepository chunkSearchRepository;
     private final RabbitTemplate rabbitTemplate; // 注入 RabbitTemplate
 
     @Autowired
@@ -52,7 +56,7 @@ public class DocumentService {
 
         // 发送 MQ 消息
         rabbitTemplate.convertAndSend(RabbitConfig.DOC_QUEUE, doc.getId());
-        
+
         return doc;
     }
 
@@ -115,6 +119,17 @@ public class DocumentService {
             c.setEmbeddingVector(vec);
             // 4) 数据库存储
             chunkRepo.save(c);
+
+            // OLD: 旧逻辑到此结束（仅写入 PG + pgvector）
+            // NEW: 新增写入 Elasticsearch，支持 BM25 召回
+            ChunkSearchDoc searchDoc = new ChunkSearchDoc();
+            searchDoc.setId(String.valueOf(c.getId()));
+            searchDoc.setChunkId(c.getId());
+            searchDoc.setDocumentId(docId);
+            searchDoc.setChunkIndex(c.getChunkIndex());
+            searchDoc.setText(c.getText());
+            searchDoc.setUpdatedAt(Instant.now());
+            chunkSearchRepository.save(searchDoc);
         }
     }
 
@@ -130,12 +145,15 @@ public class DocumentService {
      * 先删除chat_massage、再删除conservative、再删除document，这样才不会报错！
      */
     @Transactional
-    public void deleteDocumentWithRelatedData(Long docId) {
+    public void deleteDocumentWithRelatedData(Long docId, Long userId) {
 
 
         // --- 1. 查找 Document 记录 ---
-        Document document = documentRepository.findById(docId)
-                .orElseThrow(() -> new RuntimeException("文档不存在或已被删除！ID: " + docId));
+        // OLD: 仅按 docId 查找，缺少用户归属校验
+        // Document document = documentRepository.findById(docId)
+        //         .orElseThrow(() -> new RuntimeException("文档不存在或已被删除！ID: " + docId));
+        Document document = documentRepository.findByIdAndUserId(docId, userId)
+                .orElseThrow(() -> new RuntimeException("文档不存在、已被删除或无访问权限！ID: " + docId));
 
         // 获取文件路径用于本地删除
         String filePath = document.getFilePath();
@@ -163,6 +181,7 @@ public class DocumentService {
         // --- 5. 删除关联的 DocumentChunk 记录
         // ----------------------------------------------------
         chunkRepo.deleteByDocumentId(docId);
+        chunkSearchRepository.deleteByDocumentId(docId);
         // ----------------------------------------------------
 
         // --- 6. 删除 Document 记录 ---

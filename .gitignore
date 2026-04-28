@@ -24,6 +24,7 @@ target/
 ### Security / env files ###
 .env
 .env.*
+!.env.example
 
 ### Eclipse ###
 .apt_generated

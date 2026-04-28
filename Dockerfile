@@ -18,7 +18,7 @@ RUN useradd --create-home --shell /bin/bash spring \
     && mkdir -p /app/uploads \
     && chown -R spring:spring /app
 
-COPY --from=build /workspace/target/*.jar /app/app.jar
+COPY --from=build /workspace/target/simple-demo-0.0.1-SNAPSHOT.jar /app/app.jar
 
 USER spring
 

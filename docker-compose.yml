@@ -14,8 +14,8 @@ services:
       ZHIPU_BASE_URL: ${ZHIPU_BASE_URL:-https://open.bigmodel.cn/api/paas}
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
-      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
-      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-chathelper}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-change-this-rabbitmq-password}
       SPRING_JPA_SHOW_SQL: ${SPRING_JPA_SHOW_SQL:-false}
       SPRING_THYMELEAF_CACHE: ${SPRING_THYMELEAF_CACHE:-true}
       RAG_VECTOR_TOPK: ${RAG_VECTOR_TOPK:-20}
@@ -77,8 +77,8 @@ services:
     image: rabbitmq:3-management
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-chathelper}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-change-this-rabbitmq-password}
     ports:
       - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:

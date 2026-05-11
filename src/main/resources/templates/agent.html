@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh" xmlns:th="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI超级智能体</title>
+    <link rel="stylesheet" href="/premium.css">
+    <script src="https://unpkg.com/event-source-polyfill/src/eventsource.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+<div class="app-shell agent-app-shell">
+    <div class="agent-workspace">
+        <aside class="agent-panel agent-session-panel">
+            <div class="agent-panel-header">
+                <h2>AI超级智能体</h2>
+                <p>独立 Agent 工作台</p>
+            </div>
+
+            <form class="agent-new-session" action="/agent/session/create" method="post">
+                <input name="title" placeholder="新会话标题">
+                <button class="btn btn-secondary" type="submit">新建</button>
+            </form>
+
+            <div class="agent-session-list">
+                <a th:each="s : ${sessions}"
+                   th:href="@{/agent(sessionId=${s.id})}"
+                   th:class="${s.id == activeSession.id} ? 'agent-session-item active' : 'agent-session-item'">
+                    <span th:text="${s.title}">AI超级智能体</span>
+                    <small th:text="${#temporals.format(s.updatedAt, 'MM-dd HH:mm')}">05-09 10:30</small>
+                </a>
+            </div>
+
+            <div class="agent-side-actions">
+                <a href="/auth/home"><button type="button" class="btn btn-secondary">返回首页</button></a>
+            </div>
+        </aside>
+
+        <main class="agent-chat-panel">
+            <div class="agent-chat-header">
+                <div>
+                    <h1 th:text="${activeSession.title}">AI超级智能体</h1>
+                    <p>可调用本地工具、RAG 工具以及已注册的 MCP 工具</p>
+                </div>
+                <button class="btn btn-danger btn-sm" onclick="clearAgentSession()">清空</button>
+            </div>
+
+            <div id="agentChatBox" class="agent-chat-box">
+                <div th:if="${#lists.isEmpty(messages)}" class="empty-tip">
+                    你可以让 Agent 查文档、调用工具、生成报告或整理简历项目描述。
+                </div>
+
+                <div th:each="m : ${messages}">
+                    <div th:if="${m.role == 'user'}" class="msg user-msg">
+                        <div class="bubble user-bubble" th:text="${m.content}"></div>
+                    </div>
+                    <div th:if="${m.role == 'assistant'}" class="msg ai-msg">
+                        <div class="bubble ai-bubble markdown-content" th:text="${m.content}"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="agent-suggestions">
+                <button class="btn btn-secondary btn-sm" onclick="fillPrompt('列出我已经上传的文档，并告诉我哪些可以作为 RAG 知识库使用')">文档列表</button>
+                <button class="btn btn-secondary btn-sm" onclick="fillPrompt('请调用 RAG 工具，基于我上传的文档总结 Spring AI 和 MCP 的项目亮点')">RAG工具</button>
+                <button class="btn btn-secondary btn-sm" onclick="fillPrompt('帮我把这个项目包装成简历上的 3 条技术亮点：RAG、Agent、MCP、调用链落库')">简历描述</button>
+            </div>
+
+            <div class="agent-input-area">
+                <textarea id="agentInput"
+                          placeholder="把任务交给 AI 超级智能体..."
+                          onkeydown="if(event.keyCode===13 && !event.shiftKey) { event.preventDefault(); sendAgentMessage(); }"></textarea>
+                <button class="btn" onclick="sendAgentMessage()">发送</button>
+            </div>
+        </main>
+
+        <aside class="agent-panel agent-step-panel">
+            <div class="agent-panel-header">
+                <h2>调用链</h2>
+                <p>Plan / Tool Call / Tool Result / Final</p>
+            </div>
+            <div id="agentStepList" class="agent-step-list">
+                <div th:each="step : ${steps}" class="agent-step">
+                    <div class="agent-step-title">
+                        <span th:text="${step.stepIndex + '. ' + step.stepType}">1. PLAN</span>
+                        <em th:text="${step.status}">SUCCESS</em>
+                    </div>
+                    <div class="agent-step-tool" th:text="${step.toolSource + ' / ' + step.toolName}">LOCAL / rag_search</div>
+                    <pre th:if="${step.toolArguments != null}" th:text="${step.toolArguments}"></pre>
+                    <pre th:if="${step.toolResult != null}" th:text="${step.toolResult}"></pre>
+                    <pre th:if="${step.errorMessage != null}" th:text="${step.errorMessage}"></pre>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<input type="hidden" id="agentSessionId" th:value="${activeSession.id}">
+
+<script>
+    marked.setOptions({ gfm: true, breaks: true });
+    let agentEventSource = null;
+
+    document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll(".markdown-content").forEach(el => {
+            el.innerHTML = marked.parse(el.textContent || "");
+        });
+        scrollChatToBottom();
+    });
+
+    function fillPrompt(text) {
+        document.getElementById("agentInput").value = text;
+        document.getElementById("agentInput").focus();
+    }
+
+    function sendAgentMessage() {
+        const input = document.getElementById("agentInput");
+        const text = input.value.trim();
+        if (!text) return;
+
+        const box = document.getElementById("agentChatBox");
+        const emptyTip = box.querySelector(".empty-tip");
+        if (emptyTip) emptyTip.remove();
+
+        const userDiv = document.createElement("div");
+        userDiv.className = "msg user-msg";
+        userDiv.innerHTML = `<div class="bubble user-bubble"></div>`;
+        userDiv.querySelector(".bubble").textContent = text;
+        box.appendChild(userDiv);
+
+        const aiDiv = document.createElement("div");
+        aiDiv.className = "msg ai-msg";
+        const aiBubble = document.createElement("div");
+        aiBubble.className = "bubble ai-bubble";
+        aiBubble.innerHTML = "<span>...</span>";
+        aiDiv.appendChild(aiBubble);
+        box.appendChild(aiDiv);
+
+        input.value = "";
+        scrollChatToBottom();
+
+        if (agentEventSource) agentEventSource.close();
+
+        const sessionId = document.getElementById("agentSessionId").value;
+        const url = `/agent/ask?sessionId=${sessionId}&question=${encodeURIComponent(text)}`;
+        agentEventSource = new EventSourcePolyfill(url);
+        let full = "";
+
+        agentEventSource.onmessage = function (event) {
+            if (event.data === "[DONE]") {
+                agentEventSource.close();
+                agentEventSource = null;
+                refreshSteps();
+                return;
+            }
+            full += event.data;
+            aiBubble.innerHTML = marked.parse(full);
+            scrollChatToBottom();
+        };
+
+        agentEventSource.onerror = function () {
+            full += "\n\n调用失败，请稍后重试。";
+            aiBubble.innerHTML = marked.parse(full);
+            agentEventSource.close();
+            agentEventSource = null;
+            refreshSteps();
+        };
+    }
+
+    function refreshSteps() {
+        const sessionId = document.getElementById("agentSessionId").value;
+        fetch(`/agent/steps?sessionId=${sessionId}`)
+            .then(response => response.json())
+            .then(steps => {
+                const list = document.getElementById("agentStepList");
+                list.innerHTML = "";
+                steps.forEach(step => list.appendChild(renderStep(step)));
+            });
+    }
+
+    function renderStep(step) {
+        const item = document.createElement("div");
+        item.className = "agent-step";
+        const title = document.createElement("div");
+        title.className = "agent-step-title";
+        title.innerHTML = `<span>${step.stepIndex}. ${step.stepType}</span><em>${step.status}</em>`;
+        item.appendChild(title);
+
+        const tool = document.createElement("div");
+        tool.className = "agent-step-tool";
+        tool.textContent = `${step.toolSource || "SYSTEM"} / ${step.toolName || "-"}`;
+        item.appendChild(tool);
+
+        [step.toolArguments, step.toolResult, step.errorMessage].forEach(value => {
+            if (value) {
+                const pre = document.createElement("pre");
+                pre.textContent = value;
+                item.appendChild(pre);
+            }
+        });
+        return item;
+    }
+
+    function clearAgentSession() {
+        if (!confirm("确认清空当前 Agent 会话和调用链记录？")) return;
+        const sessionId = document.getElementById("agentSessionId").value;
+        fetch("/agent/clear", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ sessionId })
+        }).then(response => {
+            if (response.ok) {
+                window.location.href = `/agent?sessionId=${sessionId}`;
+            } else {
+                response.text().then(message => alert(message));
+            }
+        });
+    }
+
+    function scrollChatToBottom() {
+        const box = document.getElementById("agentChatBox");
+        box.scrollTop = box.scrollHeight;
+    }
+</script>
+
+</body>
+</html>

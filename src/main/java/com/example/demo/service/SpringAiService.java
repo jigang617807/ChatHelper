@@ -1,7 +1,6 @@
 package com.example.demo.service;
 
 import com.example.demo.entity.ChatMessage;
-import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -10,6 +9,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -17,11 +17,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 public class SpringAiService {
 
     private final ChatModel chatModel;
     private final EmbeddingModel embeddingModel;
+
+    public SpringAiService(@Qualifier("zhiPuAiChatModel") ChatModel chatModel,
+                           EmbeddingModel embeddingModel) {
+        this.chatModel = chatModel;
+        this.embeddingModel = embeddingModel;
+    }
 
     public List<Double> embedding(String text) {
         float[] vector = embeddingModel.embed(text);

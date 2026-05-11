@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>智能工作台</title>
     <link rel="stylesheet" href="/premium.css">
+    <script src="https://unpkg.com/event-source-polyfill/src/eventsource.min.js"></script>
 </head>
 <body>
 
@@ -21,6 +22,7 @@
                 <a class="nav-link" href="/doc/list"><button class="nav-btn">文档列表</button></a>
                 <a class="nav-link" href="/doc/upload"><button class="nav-btn">上传文档</button></a>
                 <a class="nav-link" href="/agent/doc"><button class="nav-btn">文档任务Agent</button></a>
+                <a class="nav-link" href="/agent"><button class="nav-btn">AI超级智能体</button></a>
             </div>
 
             <a class="nav-link logout-bottom" href="/auth/logout"><button class="logout-btn">退出登录</button></a>
@@ -72,5 +74,74 @@
     }
 </script>
 
+<script>
+    let homeEventSource = null;
+
+    function sendMessage() {
+        const input = document.getElementById("userInput");
+        const sendButton = document.querySelector(".input-area .btn:not(.btn-secondary)");
+        const text = input.value.trim();
+        if (!text) return;
+
+        const display = document.getElementById("chatDisplay");
+        const tip = document.querySelector(".empty-tip");
+        if (tip) tip.remove();
+
+        const userMsgDiv = document.createElement("div");
+        userMsgDiv.className = "msg user-msg";
+        const userBubble = document.createElement("div");
+        userBubble.className = "bubble user-bubble";
+        userBubble.textContent = text;
+        userMsgDiv.appendChild(userBubble);
+        display.appendChild(userMsgDiv);
+
+        input.value = "";
+        input.disabled = true;
+        sendButton.disabled = true;
+        display.scrollTop = display.scrollHeight;
+
+        const botMsgDiv = document.createElement("div");
+        botMsgDiv.className = "msg ai-msg";
+        const botBubble = document.createElement("div");
+        botBubble.className = "bubble ai-bubble";
+        botBubble.textContent = "...";
+        botMsgDiv.appendChild(botBubble);
+        display.appendChild(botMsgDiv);
+        display.scrollTop = display.scrollHeight;
+
+        if (homeEventSource) homeEventSource.close();
+
+        const url = `/auth/home/ask?question=${encodeURIComponent(text)}`;
+        const EventSourceClass = window.EventSourcePolyfill || window.EventSource;
+        homeEventSource = new EventSourceClass(url);
+        let full = "";
+
+        homeEventSource.onmessage = function (event) {
+            if (event.data === "[DONE]") {
+                homeEventSource.close();
+                homeEventSource = null;
+                input.disabled = false;
+                sendButton.disabled = false;
+                input.focus();
+                return;
+            }
+            full += event.data;
+            botBubble.textContent = full;
+            display.scrollTop = display.scrollHeight;
+        };
+
+        homeEventSource.onerror = function () {
+            if (!full) {
+                full = "Model call failed. Please try again later.";
+            }
+            botBubble.textContent = full;
+            homeEventSource.close();
+            homeEventSource = null;
+            input.disabled = false;
+            sendButton.disabled = false;
+            input.focus();
+        };
+    }
+</script>
 </body>
 </html>

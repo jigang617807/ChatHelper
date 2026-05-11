@@ -35,6 +35,15 @@ spring:
         options:
           model: ${zhipu.embedding-model}
           dimensions: 768
+    mcp:
+      client:
+        enabled: ${MCP_ENABLED:false}
+        name: rag-agent-mcp-client
+        version: 1.0.0
+        request-timeout: 30s
+        type: SYNC
+        toolcallback:
+          enabled: true
 
 #配置API
 zhipu:
@@ -46,6 +55,14 @@ zhipu:
   #  chat-model: "glm-4.5-flash" 过期了！
   #  chat-model: "glm-4.6v-flash"
   chat-model: "glm-4.7-flash"
+
+agent:
+  deepseek:
+    api-key: ${DEEPSEEK_API_KEY:}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+    model: ${DEEPSEEK_CHAT_MODEL:deepseek-chat}
+    temperature: ${DEEPSEEK_TEMPERATURE:0.4}
+    max-tokens: ${DEEPSEEK_MAX_TOKENS:2048}
 
 upload:
   #  dir: D:/javalearning/demo

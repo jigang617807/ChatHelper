@@ -35,6 +35,7 @@ public class DocumentService {
     private final DocumentChunkRepository chunkRepo;
     private final RagService ragService;
     private final ChunkSearchRepository chunkSearchRepository;
+    private final RagRetrievalCacheService ragRetrievalCacheService;
     private final RabbitTemplate rabbitTemplate; // 注入 RabbitTemplate
 
     @Autowired
@@ -182,6 +183,7 @@ public class DocumentService {
         // ----------------------------------------------------
         chunkRepo.deleteByDocumentId(docId);
         chunkSearchRepository.deleteByDocumentId(docId);
+        ragRetrievalCacheService.evictDocument(userId, docId);
         // ----------------------------------------------------
 
         // --- 6. 删除 Document 记录 ---

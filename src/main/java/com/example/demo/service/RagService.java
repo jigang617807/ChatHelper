@@ -1,5 +1,6 @@
 package com.example.demo.service;
 
+import com.example.demo.repository.DocumentChunkCacheProjection;
 import com.example.demo.repository.DocumentChunkProjection;
 import com.example.demo.repository.DocumentChunkRepository;
 import com.example.demo.repository.DocumentChunkVectorHitProjection;
@@ -66,6 +67,10 @@ public class RagService {
     }
 
     public List<DocumentChunkProjection> searchRelevant(Long documentId, String question) {
+        return new ArrayList<>(searchRelevantWithIds(documentId, question));
+    }
+
+    public List<DocumentChunkCacheProjection> searchRelevantWithIds(Long documentId, String question) {
         List<RankedChunk> vectorHits = vectorRecall(documentId, question, vectorTopK);
         List<RankedChunk> bm25Hits = bm25Recall(documentId, question, bm25TopK);
 
@@ -82,7 +87,7 @@ public class RagService {
 
         return fused.stream()
                 .limit(finalTopK)
-                .map(hit -> (DocumentChunkProjection) hit::text)
+                .map(hit -> (DocumentChunkCacheProjection) new RankedChunkProjection(hit))
                 .toList();
     }
 
@@ -133,7 +138,7 @@ public class RagService {
             return Collections.emptyList();
         }
     }
-
+//rrf融合，就是各自排名的得分叠加。
     private List<RankedChunk> rrfFuse(List<RankedChunk> vectorHits, List<RankedChunk> bm25Hits, int k) {
         Map<Long, FusionAccumulator> acc = new LinkedHashMap<>();
         addRrf(acc, vectorHits, k);
@@ -156,7 +161,7 @@ public class RagService {
             });
         }
     }
-
+//加权融合，接口，还没实现
     private List<RankedChunk> weightedFuse(List<RankedChunk> vectorHits,
                                            List<RankedChunk> bm25Hits,
                                            double vWeight,
@@ -188,6 +193,18 @@ public class RagService {
     }
 
     private record RankedChunk(Long chunkId, String text, double score, int rank, SourceType sourceType) {
+    }
+
+    private record RankedChunkProjection(RankedChunk rankedChunk) implements DocumentChunkCacheProjection {
+        @Override
+        public Long getId() {
+            return rankedChunk.chunkId();
+        }
+
+        @Override
+        public String getText() {
+            return rankedChunk.text();
+        }
     }
 
     private record FusionAccumulator(Long chunkId, String text, double score) {

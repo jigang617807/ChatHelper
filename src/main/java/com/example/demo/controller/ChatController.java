@@ -5,7 +5,7 @@ import com.example.demo.repository.ChatMessageRepository;
 import com.example.demo.repository.ConversationRepository;
 import com.example.demo.repository.DocumentChunkProjection;
 import com.example.demo.repository.DocumentRepository;
-import com.example.demo.service.RagService;
+import com.example.demo.service.RagCachedRetrievalService;
 import com.example.demo.service.SpringAiService;
 import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
@@ -29,7 +29,7 @@ public class ChatController {
 
     private final ConversationRepository convRepo;
     private final ChatMessageRepository msgRepo;
-    private final RagService ragService;
+    private final RagCachedRetrievalService ragCachedRetrievalService;
     private final DocumentRepository documentRepository;
     private final SpringAiService springAiService;
 
@@ -97,7 +97,7 @@ public class ChatController {
             return Flux.just("data:【错误】无权访问该文档");
         }
 
-        List<DocumentChunkProjection> chunks = ragService.searchRelevant(documentId, question);
+        List<DocumentChunkProjection> chunks = ragCachedRetrievalService.searchRelevant(uid, documentId, question);
         StringBuilder context = new StringBuilder();
         for (DocumentChunkProjection chunk : chunks) {
             context.append(chunk.getText()).append("\n");

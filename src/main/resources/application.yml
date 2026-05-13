@@ -21,6 +21,10 @@ spring:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
   elasticsearch:
     uris: ${ES_URIS:http://localhost:9200}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
   ai:
     model:
       chat: zhipuai
@@ -63,6 +67,16 @@ agent:
     model: ${DEEPSEEK_CHAT_MODEL:deepseek-chat}
     temperature: ${DEEPSEEK_TEMPERATURE:0.4}
     max-tokens: ${DEEPSEEK_MAX_TOKENS:2048}
+  react:
+    max-steps: ${AGENT_REACT_MAX_STEPS:8}
+    workspace-root: ${AGENT_REACT_WORKSPACE_ROOT:uploads/agent-workspace}
+    web-search:
+      api-key: ${AGENT_REACT_WEB_SEARCH_API_KEY:}
+      endpoint: ${AGENT_REACT_WEB_SEARCH_ENDPOINT:https://api.tavily.com/search}
+    resource-download:
+      max-bytes: ${AGENT_REACT_RESOURCE_MAX_BYTES:10485760}
+    pdf:
+      font-path: ${AGENT_REACT_PDF_FONT_PATH:}
 
 upload:
   #  dir: D:/javalearning/demo
@@ -72,6 +86,10 @@ upload:
   docs: uploads/docs/
 
 rag:
+  cache:
+    enabled: ${RAG_CACHE_ENABLED:true}
+    ttl-seconds: ${RAG_CACHE_TTL_SECONDS:3600}
+    key-prefix: rag:retrieval:v1
   retrieval:
     vector-topk: ${RAG_VECTOR_TOPK:20}
     bm25-topk: ${RAG_BM25_TOPK:20}

@@ -10,7 +10,7 @@ import com.example.demo.repository.DocumentChunkProjection;
 import com.example.demo.repository.DocumentRepository;
 import com.example.demo.service.DocAgentService;
 import com.example.demo.service.DocumentService;
-import com.example.demo.service.RagService;
+import com.example.demo.service.RagCachedRetrievalService;
 import com.example.demo.service.SpringAiService;
 import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
@@ -36,7 +36,7 @@ public class DocAgentController {
     private final DocumentRepository documentRepository;
     private final ConversationRepository conversationRepository;
     private final ChatMessageRepository chatMessageRepository;
-    private final RagService ragService;
+    private final RagCachedRetrievalService ragCachedRetrievalService;
     private final SpringAiService springAiService;
     private final DocAgentService docAgentService;
 
@@ -102,7 +102,7 @@ public class DocAgentController {
                 ? docAgentService.defaultQuestionForTask(normalizedTask)
                 : question;
 
-        List<DocumentChunkProjection> chunks = ragService.searchRelevant(documentId, effectiveQuestion);
+        List<DocumentChunkProjection> chunks = ragCachedRetrievalService.searchRelevant(uid, documentId, effectiveQuestion);
         String prompt = docAgentService.buildAgentPrompt(normalizedTask, effectiveQuestion, chunks);
         List<ChatMessage> history = chatMessageRepository.findByConversationIdOrderByIdAsc(conversationId);
 

@@ -22,7 +22,7 @@ public class SpringAiService {
     private final ChatModel chatModel;
     private final EmbeddingModel embeddingModel;
 
-    public SpringAiService(@Qualifier("zhiPuAiChatModel") ChatModel chatModel,
+    public SpringAiService(@Qualifier("agentDeepSeekChatModel") ChatModel chatModel,
                            EmbeddingModel embeddingModel) {
         this.chatModel = chatModel;
         this.embeddingModel = embeddingModel;

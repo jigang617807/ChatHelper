@@ -4,7 +4,7 @@ import com.example.demo.entity.DocStatus;
 import com.example.demo.entity.Document;
 import com.example.demo.repository.DocumentChunkProjection;
 import com.example.demo.repository.DocumentRepository;
-import com.example.demo.service.RagService;
+import com.example.demo.service.RagCachedRetrievalService;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -19,11 +19,12 @@ import java.util.stream.Collectors;
 public class AgentRagTools {
 
     private final DocumentRepository documentRepository;
-    private final ObjectProvider<RagService> ragServiceProvider;
+    private final ObjectProvider<RagCachedRetrievalService> ragCachedRetrievalServiceProvider;
 
-    public AgentRagTools(DocumentRepository documentRepository, ObjectProvider<RagService> ragServiceProvider) {
+    public AgentRagTools(DocumentRepository documentRepository,
+                         ObjectProvider<RagCachedRetrievalService> ragCachedRetrievalServiceProvider) {
         this.documentRepository = documentRepository;
-        this.ragServiceProvider = ragServiceProvider;
+        this.ragCachedRetrievalServiceProvider = ragCachedRetrievalServiceProvider;
     }
 
     @Tool(name = "document_list", description = "List the current user's uploaded documents that can be used by RAG.")
@@ -93,7 +94,8 @@ public class AgentRagTools {
             return "Document " + documentId + " is not ready for RAG search. Current status: " + document.getStatus();
         }
 
-        List<DocumentChunkProjection> chunks = ragServiceProvider.getObject().searchRelevant(documentId, question);
+        List<DocumentChunkProjection> chunks =
+                ragCachedRetrievalServiceProvider.getObject().searchRelevant(userId, documentId, question);
         if (chunks == null || chunks.isEmpty()) {
             return "No relevant chunks were found in document " + documentId + ".";
         }

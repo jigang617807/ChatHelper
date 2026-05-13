@@ -11,6 +11,8 @@ import java.util.List;
 public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Long> {
     List<DocumentChunk> findByDocumentId(Long docId);
 
+    List<DocumentChunkCacheProjection> findByDocumentIdAndIdIn(Long documentId, List<Long> ids);
+
     @Modifying
     @Query("DELETE FROM DocumentChunk c WHERE c.documentId = :documentId")
     void deleteByDocumentId(@Param("documentId") Long documentId);

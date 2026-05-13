@@ -48,6 +48,12 @@ public class AgentStepService {
     }
 
     @Transactional
+    public AgentStep recordToolCall(Long sessionId, Long messageId, String toolName, AgentToolSource source, String arguments) {
+        return save(sessionId, messageId, AgentStepType.TOOL_CALL, toolName, source,
+                arguments, null, AgentStepStatus.RUNNING, null, null);
+    }
+
+    @Transactional
     public AgentStep recordToolResult(Long sessionId, String toolName, AgentToolSource source, String arguments,
                                       String result, long latencyMs) {
         return save(sessionId, null, AgentStepType.TOOL_RESULT, toolName, source,
@@ -55,9 +61,23 @@ public class AgentStepService {
     }
 
     @Transactional
+    public AgentStep recordToolResult(Long sessionId, Long messageId, String toolName, AgentToolSource source,
+                                      String arguments, String result, long latencyMs) {
+        return save(sessionId, messageId, AgentStepType.TOOL_RESULT, toolName, source,
+                arguments, result, AgentStepStatus.SUCCESS, latencyMs, null);
+    }
+
+    @Transactional
     public AgentStep recordToolError(Long sessionId, String toolName, AgentToolSource source, String arguments,
                                      String error, long latencyMs) {
         return save(sessionId, null, AgentStepType.TOOL_RESULT, toolName, source,
+                arguments, null, AgentStepStatus.FAILED, latencyMs, error);
+    }
+
+    @Transactional
+    public AgentStep recordToolError(Long sessionId, Long messageId, String toolName, AgentToolSource source,
+                                     String arguments, String error, long latencyMs) {
+        return save(sessionId, messageId, AgentStepType.TOOL_RESULT, toolName, source,
                 arguments, null, AgentStepStatus.FAILED, latencyMs, error);
     }
 

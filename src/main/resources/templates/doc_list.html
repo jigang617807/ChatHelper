@@ -3,80 +3,165 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的文档</title>
+    <title>文档工作台</title>
     <link rel="stylesheet" href="/premium.css">
 </head>
-<body class="auth-shell">
+<body>
 
-<div class="auth-card wide-card">
-    <h2 class="title">我的文档</h2>
+<div class="app-shell document-app-shell">
+    <main class="document-workbench">
+        <section class="document-hero">
+            <div>
+                <p class="eyebrow">Document Workspace</p>
+                <h1>文档工作台</h1>
+                <p>上传 PDF 后自动进入解析、切分、向量化流程，完成后即可进行文档问答或进入文档任务 Agent。</p>
+            </div>
+            <div class="document-hero-actions">
+                <a href="/auth/home"><button type="button" class="btn btn-secondary">返回首页</button></a>
+                <a href="/agent"><button type="button" class="btn btn-secondary">通用 Agent</button></a>
+            </div>
+        </section>
 
-    <div class="table-wrap">
-        <table class="doc-table">
-            <thead>
-            <tr>
-                <th>文件名</th>
-                <th>状态</th>
-                <th>上传时间</th>
-                <th>操作</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr th:if="${docs.size() == 0}">
-                <td colspan="4" class="empty-tip">暂无文档，请先上传 PDF</td>
-            </tr>
+        <section class="document-grid">
+            <article class="document-upload-panel">
+                <div class="section-heading">
+                    <span>上传文档</span>
+                    <small>仅支持 PDF</small>
+                </div>
 
-            <tr th:each="doc : ${docs}">
-                <td class="filename-cell" th:text="${doc.title}" th:title="${doc.title}">项目需求文档.pdf</td>
-                <td>
-                    <span th:if="${doc.status.name() == 'COMPLETED'}" class="badge badge-success">已完成</span>
-                    <span th:if="${doc.status.name() == 'PROCESSING'}" class="badge badge-warning">处理中</span>
-                    <span th:if="${doc.status.name() == 'PENDING'}" class="badge badge-pending">排队中</span>
-                    <span th:if="${doc.status.name() == 'FAILED'}" class="badge badge-danger">失败</span>
-                </td>
-                <td class="time-cell" th:text="${doc.uploadedAt}" th:title="${doc.uploadedAt}">2025-11-20 14:30</td>
-                <td class="actions-cell" title="可左右滑动查看完整操作按钮">
-                    <div class="doc-actions-scroll">
-                        <div class="doc-actions-inner">
-                            <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/chat/start?docId=' + ${doc.id}}">
-                                <button class="btn btn-success btn-sm">开始问答</button>
-                            </a>
-                            <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/agent/doc/start?docId=' + ${doc.id}}">
-                                <button class="btn btn-secondary btn-sm">打开 Agent</button>
-                            </a>
-                            <button th:unless="${doc.status.name() == 'COMPLETED'}" class="btn btn-secondary btn-sm btn-disabled" disabled>
-                                准备中
-                            </button>
-                            <button class="btn btn-danger btn-sm" th:attr="onclick=|confirmDelete(${doc.id}, '${doc.title}')|">删除</button>
-                        </div>
+                <div class="upload-area modern-upload-area" id="dropArea" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-icon">+</div>
+                    <h2>拖拽或点击选择 PDF</h2>
+                    <p>上传后会自动创建文档记录，后台完成解析后状态会更新为“已完成”。</p>
+                </div>
+
+                <form action="/doc/upload" method="post" enctype="multipart/form-data" id="uploadForm" class="upload-form-inline">
+                    <input type="file" name="file" accept="application/pdf" id="fileInput" required onchange="showFileName(this)">
+                    <div class="file-name" id="fileName">尚未选择文件</div>
+                    <button type="submit" class="btn">上传并解析</button>
+                </form>
+            </article>
+
+            <article class="document-summary-panel">
+                <div class="section-heading">
+                    <span>处理状态</span>
+                    <small th:text="${docs.size()} + ' 个文档'">0 个文档</small>
+                </div>
+                <div class="status-cards">
+                    <div class="status-card">
+                        <strong th:text="${docs.size()}">0</strong>
+                        <span>全部文档</span>
                     </div>
-                </td>
-            </tr>
-            </tbody>
-        </table>
-    </div>
+                    <div class="status-card">
+                        <strong th:text="${#lists.size(docs.?[status.name() == 'COMPLETED'])}">0</strong>
+                        <span>可问答</span>
+                    </div>
+                    <div class="status-card">
+                        <strong th:text="${#lists.size(docs.?[status.name() == 'PROCESSING' || status.name() == 'PENDING'])}">0</strong>
+                        <span>处理中</span>
+                    </div>
+                </div>
+                <p class="helper-copy">处理中或排队中的文档会自动刷新页面，完成后按钮会变为可用。</p>
+            </article>
+        </section>
 
-    <div class="linkbar">
-        <a href="/auth/home"><button type="button" class="btn btn-secondary">返回主页</button></a>
-    </div>
+        <section class="document-list-panel">
+            <div class="section-heading">
+                <span>我的文档</span>
+                <small>问答、Agent、删除</small>
+            </div>
+
+            <div class="table-wrap document-table-wrap">
+                <table class="doc-table document-table">
+                    <thead>
+                    <tr>
+                        <th>文档</th>
+                        <th>状态</th>
+                        <th>上传时间</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:if="${docs.size() == 0}">
+                        <td colspan="4" class="empty-tip">暂无文档，请先上传 PDF。</td>
+                    </tr>
+
+                    <tr th:each="doc : ${docs}">
+                        <td class="filename-cell" th:text="${doc.title}" th:title="${doc.title}">项目需求文档.pdf</td>
+                        <td>
+                            <span th:if="${doc.status.name() == 'COMPLETED'}" class="badge badge-success">已完成</span>
+                            <span th:if="${doc.status.name() == 'PROCESSING'}" class="badge badge-warning">处理中</span>
+                            <span th:if="${doc.status.name() == 'PENDING'}" class="badge badge-pending">排队中</span>
+                            <span th:if="${doc.status.name() == 'FAILED'}" class="badge badge-danger">失败</span>
+                        </td>
+                        <td class="time-cell" th:text="${doc.uploadedAt}" th:title="${doc.uploadedAt}">2026-05-13 14:30</td>
+                        <td class="actions-cell">
+                            <div class="document-actions">
+                                <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/chat/start?docId=' + ${doc.id}}">
+                                    <button class="btn btn-success btn-sm">问答</button>
+                                </a>
+                                <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/agent/doc/start?docId=' + ${doc.id}}">
+                                    <button class="btn btn-secondary btn-sm">Agent</button>
+                                </a>
+                                <button th:unless="${doc.status.name() == 'COMPLETED'}" class="btn btn-secondary btn-sm btn-disabled" disabled>
+                                    等待完成
+                                </button>
+                                <button class="btn btn-danger btn-sm delete-doc-btn"
+                                        th:data-doc-id="${doc.id}"
+                                        th:data-doc-title="${doc.title}">
+                                    删除
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
 </div>
 
 <script>
     document.addEventListener("DOMContentLoaded", function () {
         const hasPending = document.body.innerText.includes("处理中") || document.body.innerText.includes("排队中");
         if (hasPending) {
-            setTimeout(() => window.location.reload(), 2000);
+            setTimeout(() => window.location.reload(), 2500);
         }
 
-        // 鼠标滚轮在操作列区域内可横向滑动
-        document.querySelectorAll(".doc-actions-scroll").forEach(el => {
-            el.addEventListener("wheel", function (event) {
-                if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
-                    this.scrollLeft += event.deltaY;
-                    event.preventDefault();
-                }
-            }, { passive: false });
+        document.querySelectorAll(".delete-doc-btn").forEach(button => {
+            button.addEventListener("click", () => {
+                confirmDelete(button.dataset.docId, button.dataset.docTitle);
+            });
         });
+    });
+
+    function showFileName(input) {
+        const file = input.files[0];
+        document.getElementById("fileName").textContent = file ? "已选择：" + file.name : "尚未选择文件";
+    }
+
+    const dropArea = document.getElementById("dropArea");
+
+    dropArea.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        dropArea.classList.add("dragover");
+    });
+
+    dropArea.addEventListener("dragleave", () => {
+        dropArea.classList.remove("dragover");
+    });
+
+    dropArea.addEventListener("drop", (event) => {
+        event.preventDefault();
+        dropArea.classList.remove("dragover");
+
+        const file = event.dataTransfer.files[0];
+        if (file && file.type === "application/pdf") {
+            document.getElementById("fileInput").files = event.dataTransfer.files;
+            showFileName({ files: [file] });
+        } else {
+            alert("请选择 PDF 文件。");
+        }
     });
 
     function confirmDelete(docId, docTitle) {
@@ -89,13 +174,13 @@
         })
             .then(response => {
                 if (response.ok) {
-                    alert(`文档 "${docTitle}" 删除成功`);
+                    alert(`文档 "${docTitle}" 删除成功。`);
                     window.location.reload();
                 } else {
-                    response.text().then(message => alert(`删除失败: ${message || response.statusText}`));
+                    response.text().then(message => alert(`删除失败：${message || response.statusText}`));
                 }
             })
-            .catch(() => alert("网络或服务器错误，删除失败。"));
+            .catch(() => alert("网络异常，删除失败，请稍后重试。"));
     }
 </script>
 

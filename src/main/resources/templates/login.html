@@ -6,28 +6,45 @@
     <title>登录</title>
     <link rel="stylesheet" href="/premium.css">
 </head>
-<body class="auth-shell">
+<body>
 
-<div class="auth-card">
-    <h2 class="title">欢迎回来</h2>
-    <p class="subtitle">登录后继续你的智能文档工作流</p>
-
-    <form action="/auth/login-page" method="post">
-        <label>用户名</label>
-        <input type="text" name="username" placeholder="请输入用户名" required>
-
-        <label>密码</label>
-        <input type="password" name="password" placeholder="请输入密码" required>
-
-        <button type="submit" class="btn">登录</button>
-
-        <p class="error" th:text="${error}"></p>
-
-        <div class="linkbar">
-            <p><a href="/auth/reset">忘记密码？</a></p>
-            <p>没有账号？ <a href="/auth/register">立即注册</a></p>
+<div class="auth-page-shell">
+    <section class="auth-showcase">
+        <p class="eyebrow">RAG Workspace</p>
+        <h1>智能文档工作台</h1>
+        <p>登录后继续管理你的 PDF 文档、RAG 问答、文档任务 Agent 和工具调用链路。</p>
+        <div class="auth-feature-grid">
+            <span>文档解析</span>
+            <span>语义检索</span>
+            <span>任务 Agent</span>
         </div>
-    </form>
+    </section>
+
+    <section class="auth-card auth-form-card">
+        <div class="auth-form-header">
+            <p class="eyebrow">Welcome Back</p>
+            <h2 class="title">登录账号</h2>
+            <p class="subtitle">输入用户名和密码进入你的工作台。</p>
+        </div>
+
+        <form action="/auth/login-page" method="post" class="modern-auth-form">
+            <label>用户名</label>
+            <input type="text" name="username" placeholder="请输入用户名" autocomplete="username" required>
+
+            <label>密码</label>
+            <input type="password" name="password" placeholder="请输入密码" autocomplete="current-password" required>
+
+            <button type="submit" class="btn">登录</button>
+
+            <p class="error" th:if="${error}" th:text="${error}"></p>
+            <p class="success" th:if="${success}" th:text="${success}"></p>
+
+            <div class="auth-links">
+                <a href="/auth/reset">忘记密码</a>
+                <span>还没有账号？<a href="/auth/register">立即注册</a></span>
+            </div>
+        </form>
+    </section>
 </div>
 
 </body>

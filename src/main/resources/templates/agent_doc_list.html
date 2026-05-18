@@ -3,56 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>文档任务Agent</title>
+    <title>文档任务 Agent</title>
     <link rel="stylesheet" href="/premium.css">
 </head>
-<body class="auth-shell">
+<body>
 
-<div class="auth-card wide-card">
-    <h2 class="title">文档任务Agent</h2>
-    <p class="subtitle">选择已完成文档，进入 Agent 工作区。</p>
+<div class="app-shell document-app-shell">
+    <main class="document-workbench">
+        <section class="document-hero agent-doc-hero">
+            <div>
+                <p class="eyebrow">Document Agent</p>
+                <h1>文档任务 Agent</h1>
+                <p>选择一个已完成解析的文档，进入针对单文档的总结、提纲、亮点提取和追问工作区。</p>
+            </div>
+            <div class="document-hero-actions">
+                <a href="/doc/list"><button type="button" class="btn btn-secondary">文档工作台</button></a>
+                <a href="/auth/home"><button type="button" class="btn btn-secondary">返回首页</button></a>
+            </div>
+        </section>
 
-    <div class="table-wrap">
-        <table class="doc-table">
-            <thead>
-            <tr>
-                <th>文档</th>
-                <th>状态</th>
-                <th>上传时间</th>
-                <th>操作</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr th:if="${docs.size() == 0}">
-                <td colspan="4" class="empty-tip">暂无文档，请先上传。</td>
-            </tr>
+        <section class="agent-doc-layout">
+            <aside class="agent-doc-guide">
+                <div class="section-heading">
+                    <span>适合做什么</span>
+                    <small>基于已完成文档</small>
+                </div>
+                <div class="guide-list">
+                    <div>
+                        <strong>文档总结</strong>
+                        <span>快速压缩长文档，抽取主题和结论。</span>
+                    </div>
+                    <div>
+                        <strong>创新点分析</strong>
+                        <span>从方法、实验、工程实现等角度提炼亮点。</span>
+                    </div>
+                    <div>
+                        <strong>结构化任务</strong>
+                        <span>生成提纲、问答材料、面试讲解口径。</span>
+                    </div>
+                </div>
+            </aside>
 
-            <tr th:each="doc : ${docs}">
-                <td class="filename-cell" th:text="${doc.title}" th:title="${doc.title}">sample.pdf</td>
-                <td>
-                    <span th:if="${doc.status.name() == 'COMPLETED'}" class="badge badge-success">已完成</span>
-                    <span th:if="${doc.status.name() == 'PROCESSING'}" class="badge badge-warning">处理中</span>
-                    <span th:if="${doc.status.name() == 'PENDING'}" class="badge badge-pending">排队中</span>
-                    <span th:if="${doc.status.name() == 'FAILED'}" class="badge badge-danger">失败</span>
-                </td>
-                <td class="time-cell" th:text="${doc.uploadedAt}" th:title="${doc.uploadedAt}">2025-11-20 14:30</td>
-                <td>
-                    <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/agent/doc/start?docId=' + ${doc.id}}">
-                        <button class="btn btn-success btn-sm">进入Agent</button>
-                    </a>
-                    <button th:unless="${doc.status.name() == 'COMPLETED'}" class="btn btn-secondary btn-sm btn-disabled" disabled>
-                        未就绪
-                    </button>
-                </td>
-            </tr>
-            </tbody>
-        </table>
-    </div>
+            <section class="document-list-panel agent-doc-table-panel">
+                <div class="section-heading">
+                    <span>可用文档</span>
+                    <small th:text="${docs.size()} + ' 个文档'">0 个文档</small>
+                </div>
 
-    <div class="linkbar">
-        <a href="/auth/home"><button type="button" class="btn btn-secondary">返回主页</button></a>
-    </div>
+                <div class="table-wrap document-table-wrap">
+                    <table class="doc-table document-table">
+                        <thead>
+                        <tr>
+                            <th>文档</th>
+                            <th>状态</th>
+                            <th>上传时间</th>
+                            <th>操作</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:if="${docs.size() == 0}">
+                            <td colspan="4" class="empty-tip">暂无文档，请先到文档工作台上传 PDF。</td>
+                        </tr>
+
+                        <tr th:each="doc : ${docs}">
+                            <td class="filename-cell" th:text="${doc.title}" th:title="${doc.title}">sample.pdf</td>
+                            <td>
+                                <span th:if="${doc.status.name() == 'COMPLETED'}" class="badge badge-success">已完成</span>
+                                <span th:if="${doc.status.name() == 'PROCESSING'}" class="badge badge-warning">处理中</span>
+                                <span th:if="${doc.status.name() == 'PENDING'}" class="badge badge-pending">排队中</span>
+                                <span th:if="${doc.status.name() == 'FAILED'}" class="badge badge-danger">失败</span>
+                            </td>
+                            <td class="time-cell" th:text="${doc.uploadedAt}" th:title="${doc.uploadedAt}">2026-05-13 14:30</td>
+                            <td class="actions-cell">
+                                <div class="document-actions">
+                                    <a th:if="${doc.status.name() == 'COMPLETED'}" th:href="@{'/agent/doc/start?docId=' + ${doc.id}}">
+                                        <button class="btn btn-success btn-sm">进入 Agent</button>
+                                    </a>
+                                    <button th:unless="${doc.status.name() == 'COMPLETED'}" class="btn btn-secondary btn-sm btn-disabled" disabled>
+                                        等待完成
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+    </main>
 </div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const hasPending = document.body.innerText.includes("处理中") || document.body.innerText.includes("排队中");
+        if (hasPending) {
+            setTimeout(() => window.location.reload(), 2500);
+        }
+    });
+</script>
 
 </body>
 </html>

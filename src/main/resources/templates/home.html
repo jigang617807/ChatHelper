@@ -3,76 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能工作台</title>
+    <title>智能文档工作台</title>
     <link rel="stylesheet" href="/premium.css">
     <script src="https://unpkg.com/event-source-polyfill/src/eventsource.min.js"></script>
 </head>
 <body>
 
-<div class="app-shell">
+<div class="app-shell home-full-app">
     <div class="workspace home-workspace">
         <aside class="sidebar home-sidebar">
             <div class="avatar-box">
-                <img th:src="${avatarPath}" alt="头像">
+                <img th:src="${avatarPath}" alt="用户头像">
                 <div class="username" th:text="${username}">用户名</div>
             </div>
 
             <div class="home-nav-group">
+                <a class="nav-link" href="/doc/list"><button class="nav-btn">文档工作台</button></a>
+                <a class="nav-link" href="/agent/doc"><button class="nav-btn">文档任务 Agent</button></a>
+                <a class="nav-link" href="/agent"><button class="nav-btn">通用 Agent 工作台</button></a>
                 <a class="nav-link" href="/user/profile"><button class="nav-btn">个人资料维护</button></a>
-                <a class="nav-link" href="/doc/list"><button class="nav-btn">文档列表</button></a>
-                <a class="nav-link" href="/doc/upload"><button class="nav-btn">上传文档</button></a>
-                <a class="nav-link" href="/agent/doc"><button class="nav-btn">文档任务Agent</button></a>
-                <a class="nav-link" href="/agent"><button class="nav-btn">AI超级智能体</button></a>
             </div>
 
             <a class="nav-link logout-bottom" href="/auth/logout"><button class="logout-btn">退出登录</button></a>
         </aside>
 
         <main class="main-card home-main">
-            <h2 class="title">智能工作台</h2>
-            <p class="subtitle">支持文档问答、语义检索与实时会话</p>
+            <h2 class="title">智能文档工作台</h2>
+            <p class="subtitle">支持文档问答、语义检索、任务 Agent 与实时对话。</p>
 
             <div class="chat-box">
                 <div class="chat-content" id="chatDisplay">
-                    <p class="empty-tip">欢迎回来！<br>你可以在下方输入框向大模型提问。</p>
+                    <p class="empty-tip">可以先问一个通用问题，也可以进入文档工作台上传 PDF 后进行 RAG 问答。</p>
                 </div>
             </div>
 
             <div class="input-area input-compact-grid">
-                <a href="/doc/upload"><button type="button" class="btn btn-secondary">+</button></a>
-                <input type="text" id="userInput" placeholder="询问任何问题..." onkeypress="if(event.keyCode===13) sendMessage()">
+                <a href="/doc/list"><button type="button" class="btn btn-secondary">+</button></a>
+                <input type="text" id="userInput" placeholder="输入问题..." onkeypress="if(event.keyCode===13) sendMessage()">
                 <button class="btn" onclick="sendMessage()">发送</button>
             </div>
         </main>
     </div>
 </div>
-
-<script>
-    function sendMessage() {
-        const text = document.getElementById("userInput").value.trim();
-        if (!text) return;
-
-        const display = document.getElementById("chatDisplay");
-        const tip = document.querySelector(".empty-tip");
-        if (tip) tip.remove();
-
-        const userMsgDiv = document.createElement("div");
-        userMsgDiv.className = "msg user-msg";
-        userMsgDiv.innerHTML = `<div class="bubble user-bubble">${text}</div>`;
-        display.appendChild(userMsgDiv);
-
-        document.getElementById("userInput").value = "";
-        display.scrollTop = display.scrollHeight;
-
-        setTimeout(() => {
-            const botMsgDiv = document.createElement("div");
-            botMsgDiv.className = "msg ai-msg";
-            botMsgDiv.innerHTML = `<div class="bubble ai-bubble">这是主页演示区。请进入“文档问答”或“文档任务Agent”体验完整能力。</div>`;
-            display.appendChild(botMsgDiv);
-            display.scrollTop = display.scrollHeight;
-        }, 500);
-    }
-</script>
 
 <script>
     let homeEventSource = null;
@@ -132,7 +104,7 @@
 
         homeEventSource.onerror = function () {
             if (!full) {
-                full = "Model call failed. Please try again later.";
+                full = "模型调用失败，请稍后重试。";
             }
             botBubble.textContent = full;
             homeEventSource.close();

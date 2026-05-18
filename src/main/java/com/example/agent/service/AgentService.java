@@ -1,11 +1,14 @@
 package com.example.agent.service;
 
-import com.example.agent.executor.ReActAgentExecutor;
 import com.example.agent.entity.AgentMessage;
 import com.example.agent.entity.AgentSession;
+import com.example.agent.executor.ReActAgentExecutor;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -17,13 +20,16 @@ import java.util.List;
 @Service
 public class AgentService {
 
+    private final ChatModel chatModel;
     private final AgentSessionService sessionService;
     private final AgentStepService stepService;
     private final ReActAgentExecutor reactAgentExecutor;
 
-    public AgentService(AgentSessionService sessionService,
+    public AgentService(@Qualifier("agentDeepSeekChatModel") ChatModel chatModel,
+                        AgentSessionService sessionService,
                         AgentStepService stepService,
                         ReActAgentExecutor reactAgentExecutor) {
+        this.chatModel = chatModel;
         this.sessionService = sessionService;
         this.stepService = stepService;
         this.reactAgentExecutor = reactAgentExecutor;
@@ -37,9 +43,14 @@ public class AgentService {
 
         AgentSession session = sessionService.getOrCreateSession(userId, sessionId);
         AgentMessage userMessage = sessionService.saveMessage(session.getId(), "user", safeQuestion);
-
         List<Message> history = toSpringMessages(sessionService.listMessages(session.getId()), userMessage.getId());
-        return Mono.fromCallable(() -> reactAgentExecutor.execute(userId, session.getId(), userMessage.getId(), safeQuestion, history))
+
+        if (!requiresReactTools(safeQuestion)) {
+            return streamDirectAnswer(session, userMessage, safeQuestion, history);
+        }
+
+        return Mono.fromCallable(() -> reactAgentExecutor.execute(
+                        userId, session.getId(), userMessage.getId(), safeQuestion, history))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(answer -> {
                     sessionService.saveMessage(session.getId(), "assistant", answer);
@@ -49,6 +60,57 @@ public class AgentService {
                     stepService.recordError(session.getId(), userMessage.getId(), error.getMessage());
                     return Flux.just("Agent execution failed: " + error.getMessage(), "[DONE]");
                 });
+    }
+
+    private Flux<String> streamDirectAnswer(AgentSession session,
+                                            AgentMessage userMessage,
+                                            String question,
+                                            List<Message> history) {
+        stepService.recordPlan(session.getId(), userMessage.getId(),
+                "Direct streaming answer; no external tool is required.");
+        StringBuilder finalAnswer = new StringBuilder();
+        return ChatClient.create(chatModel)
+                .prompt()
+                .system("""
+                        You are the AI assistant in this Agent workspace.
+                        Answer in Chinese with clear Markdown.
+                        This request does not require local tools, web search, downloads, PDF generation, or RAG.
+                        Do not output ReAct JSON. Output only the final user-facing answer.
+                        """)
+                .messages(history)
+                .user(question)
+                .stream()
+                .content()
+                .filter(chunk -> chunk != null && !chunk.isBlank())
+                .doOnNext(finalAnswer::append)
+                .doOnComplete(() -> {
+                    String answer = finalAnswer.toString();
+                    sessionService.saveMessage(session.getId(), "assistant", answer);
+                    stepService.recordFinal(session.getId(), userMessage.getId(), answer);
+                })
+                .doOnError(error -> stepService.recordError(session.getId(), userMessage.getId(), error.getMessage()))
+                .concatWithValues("[DONE]");
+    }
+
+    private boolean requiresReactTools(String question) {
+        String value = question == null ? "" : question.toLowerCase();
+        String[] toolSignals = {
+                "\u6587\u6863", "\u4e0a\u4f20", "\u77e5\u8bc6\u5e93", "rag",
+                "\u7b2c\u4e00\u4e2a", "\u7b2c\u4e8c\u4e2a", "\u8fd9\u4e2a\u6587\u6863", "\u90a3\u4e2a\u6587\u6863",
+                "\u641c\u7d22", "\u7f51\u9875", "\u7f51\u5740", "\u94fe\u63a5", "\u6293\u53d6", "\u722c\u53d6",
+                "\u4e0b\u8f7d", "\u751f\u6210pdf", "pdf", "\u5929\u6c14", "\u6700\u65b0", "\u65b0\u95fb",
+                "\u8d44\u6599", "\u8c03\u7814", "\u62a5\u544a", "\u8054\u7f51",
+                "\u5de5\u5177", "\u80fd\u529b", "\u4f60\u80fd\u505a\u4ec0\u4e48",
+                "\u65f6\u95f4", "\u51e0\u70b9", "\u65e5\u671f", "\u4eca\u5929",
+                "\u8ba1\u7b97", "\u7b97\u4e00\u4e0b", "\u7b97\u4e0b",
+                "web", "search", "scrape", "download", "url", "http", "tool", "tools", "calculate"
+        };
+        for (String signal : toolSignals) {
+            if (value.contains(signal)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<Message> toSpringMessages(List<AgentMessage> messages, Long currentUserMessageId) {
@@ -66,5 +128,4 @@ public class AgentService {
         }
         return result;
     }
-
 }

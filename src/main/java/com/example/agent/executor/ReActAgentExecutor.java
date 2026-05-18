@@ -57,13 +57,13 @@ public class ReActAgentExecutor {
             stepService.recordPlan(sessionId, messageId, "Step " + step + ": " + plan);
 
             if (action.isFinish()) {
-                String answer = blankToDefault(action.finalAnswer(), "任务已完成。");
+                String answer = blankToDefault(action.finalAnswer(), "Task completed.");
                 stepService.recordFinal(sessionId, messageId, answer);
                 return answer;
             }
 
             if (!action.isTool()) {
-                String answer = "模型返回了不支持的动作类型：" + action.type();
+                String answer = "Unsupported model action type: " + action.type();
                 stepService.recordError(sessionId, messageId, answer);
                 return answer;
             }
@@ -93,7 +93,7 @@ public class ReActAgentExecutor {
                 stepService.recordToolResult(sessionId, messageId, tool.name(), AgentToolSource.LOCAL,
                         argumentsJson, result.toObservation(), latencyMs);
                 if ("terminate".equals(tool.name())) {
-                    String answer = blankToDefault(result.content(), "任务已结束。");
+                    String answer = blankToDefault(result.content(), "Task terminated.");
                     stepService.recordFinal(sessionId, messageId, answer);
                     return answer;
                 }
@@ -118,8 +118,7 @@ public class ReActAgentExecutor {
         }
         messages.add(new UserMessage(userPrompt(question, observations, step)));
         ChatResponse response = chatModel.call(new Prompt(messages));
-        String text = extractText(response);
-        return ReActAction.fromModelText(text, objectMapper);
+        return ReActAction.fromModelText(extractText(response), objectMapper);
     }
 
     private String systemPrompt() {
@@ -127,6 +126,8 @@ public class ReActAgentExecutor {
                 You are a ReAct-style AI agent in this Java Spring system.
 
                 You must respond with exactly one JSON object and no Markdown fences.
+                The JSON must be valid. Escape newlines in string values as \\n.
+
                 JSON schema for using a tool:
                 {
                   "type": "tool",
@@ -143,12 +144,16 @@ public class ReActAgentExecutor {
                 }
 
                 Rules:
+                0. If the user asks what tools or capabilities you have, call tool_list.
                 1. Use tools when external web information, uploaded documents, downloads, or PDF artifacts are needed.
                 2. For uploaded documents, call document_list first if the target document id is unclear, then call rag_search.
                 3. For public web research, call web_search first, then web_scraping for the most relevant URLs.
                 4. For single-document questions, rag_search should include documentId.
-                5. Do not invent tool results. Base the final answer on observations.
-                6. Finish as soon as the task is sufficiently answered.
+                5. For current date/time questions, call date_time.
+                6. For arithmetic questions, call calculator.
+                7. Do not invent tool results. Base the final answer on observations.
+                8. Finish as soon as the task is sufficiently answered.
+                9. Never expose the ReAct JSON to the user. Put user-facing content only in finalAnswer.
 
                 Available tools:
                 %s
@@ -192,10 +197,10 @@ public class ReActAgentExecutor {
 
     private String buildMaxStepAnswer(List<String> observations) {
         return """
-                已达到本轮 Agent 最大执行步数限制，我先基于当前已获得的信息给出阶段性结果。
+                The agent reached the maximum number of ReAct steps. Here is the best partial result based on collected observations.
 
                 %s
-                """.formatted(observations.isEmpty() ? "当前还没有可用工具结果。" : String.join("\n\n", observations));
+                """.formatted(observations.isEmpty() ? "No tool observations are available yet." : String.join("\n\n", observations));
     }
 
     private String blankToDefault(String value, String defaultValue) {

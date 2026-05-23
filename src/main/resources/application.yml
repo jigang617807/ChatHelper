@@ -25,6 +25,13 @@ spring:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
+  rabbitmq:
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: ${RABBITMQ_DOCUMENT_PREFETCH:1}
   ai:
     model:
       chat: zhipuai
@@ -101,3 +108,12 @@ rag:
       bm25-weight: ${RAG_FUSION_BM25_WEIGHT:0.4}
     rerank:
       enabled: ${RAG_RERANK_ENABLED:false}
+
+document:
+  processing:
+    max-retries: ${DOCUMENT_PROCESSING_MAX_RETRIES:3}
+    retry-delay-ms: ${DOCUMENT_PROCESSING_RETRY_DELAY_MS:30000}
+    stale-processing-minutes: ${DOCUMENT_PROCESSING_STALE_MINUTES:30}
+    recovery-enabled: ${DOCUMENT_PROCESSING_RECOVERY_ENABLED:true}
+    recovery-interval-ms: ${DOCUMENT_PROCESSING_RECOVERY_INTERVAL_MS:60000}
+    recovery-batch-size: ${DOCUMENT_PROCESSING_RECOVERY_BATCH_SIZE:20}

@@ -16,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.util.List;
+import java.util.UUID;
 
 @Controller
 @RequestMapping("/doc")
@@ -36,23 +37,50 @@ public class DocumentController {
     }
 
     @PostMapping("/upload")
-    public String uploadPdf(@RequestParam("file") MultipartFile file,
+    public String uploadPdf(@RequestParam(value = "files", required = false) MultipartFile[] files,
+                            @RequestParam(value = "file", required = false) MultipartFile legacyFile,
                             HttpSession session) throws Exception {
         Long uid = (Long) session.getAttribute("uid");
         if (uid == null) {
             return "redirect:/auth/login";
         }
 
-        String filename = "u" + uid + "_" + file.getOriginalFilename();
+        boolean uploaded = false;
+        if (files != null) {
+            for (MultipartFile file : files) {
+                if (saveUploadedPdf(uid, file)) {
+                    uploaded = true;
+                }
+            }
+        }
+        if (!uploaded && legacyFile != null) {
+            saveUploadedPdf(uid, legacyFile);
+        }
+        return "redirect:/doc/list";
+    }
+
+    private boolean saveUploadedPdf(Long uid, MultipartFile file) throws Exception {
+        if (file == null || file.isEmpty()) {
+            return false;
+        }
+
+        String originalName = safeFileName(file.getOriginalFilename());
+        String filename = "u" + uid + "_" + UUID.randomUUID() + "_" + originalName;
         String absolutePath = new File(uploadDir).getAbsolutePath();
         String path = absolutePath + "/" + docsDir + filename;
-
         File dest = new File(path);
         dest.getParentFile().mkdirs();
         file.transferTo(dest);
 
-        docService.saveDocument(uid, filename, path);
-        return "redirect:/doc/list";
+        docService.saveDocument(uid, originalName, path);
+        return true;
+    }
+
+    private String safeFileName(String originalName) {
+        if (originalName == null || originalName.isBlank()) {
+            return "document.pdf";
+        }
+        return originalName.replace("\\", "_").replace("/", "_");
     }
 
     @GetMapping("/list")

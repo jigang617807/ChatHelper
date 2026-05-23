@@ -24,4 +24,13 @@ public class Document {
     private DocStatus status = DocStatus.PENDING;
 
     private LocalDateTime uploadedAt = LocalDateTime.now();
+
+    private Integer retryCount = 0;
+
+    @Column(columnDefinition = "TEXT")
+    private String errorMessage;
+
+    private LocalDateTime processingStartedAt;
+
+    private LocalDateTime processedAt;
 }

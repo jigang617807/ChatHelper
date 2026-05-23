@@ -14,7 +14,7 @@
             <div>
                 <p class="eyebrow">Document Workspace</p>
                 <h1>文档工作台</h1>
-                <p>上传 PDF 后自动进入解析、切分、向量化流程，完成后即可进行文档问答或进入文档任务 Agent。</p>
+                <p>上传 PDF 后自动创建文档任务，后台完成解析、切分、Embedding 和索引写入后即可进行问答或进入 Agent。</p>
             </div>
             <div class="document-hero-actions">
                 <a href="/auth/home"><button type="button" class="btn btn-secondary">返回首页</button></a>
@@ -26,19 +26,25 @@
             <article class="document-upload-panel">
                 <div class="section-heading">
                     <span>上传文档</span>
-                    <small>仅支持 PDF</small>
+                    <small>PDF only</small>
                 </div>
 
-                <div class="upload-area modern-upload-area" id="dropArea" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-area modern-upload-area" id="dropArea" role="button" tabindex="0">
                     <div class="upload-icon">+</div>
-                    <h2>拖拽或点击选择 PDF</h2>
-                    <p>上传后会自动创建文档记录，后台完成解析后状态会更新为“已完成”。</p>
+                    <h2>拖拽 PDF 到这里</h2>
+                    <p>也可以点击下方按钮选择文件。上传后页面会自动刷新文档处理状态。</p>
                 </div>
 
-                <form action="/doc/upload" method="post" enctype="multipart/form-data" id="uploadForm" class="upload-form-inline">
-                    <input type="file" name="file" accept="application/pdf" id="fileInput" required onchange="showFileName(this)">
-                    <div class="file-name" id="fileName">尚未选择文件</div>
-                    <button type="submit" class="btn">上传并解析</button>
+                <form action="/doc/upload" method="post" enctype="multipart/form-data" id="uploadForm" class="modern-upload-form">
+                    <input class="visually-hidden-file" type="file" name="files" accept="application/pdf" id="fileInput" multiple required>
+
+                    <button type="button" class="btn btn-secondary file-picker-btn" id="chooseFileBtn">选择 PDF</button>
+
+                    <div class="selected-file-card" id="fileName" title="尚未选择文件">
+                        <span class="selected-file-label">尚未选择文件</span>
+                    </div>
+
+                    <button type="submit" class="btn upload-submit-btn" id="uploadSubmitBtn" disabled>上传并解析</button>
                 </form>
             </article>
 
@@ -57,11 +63,11 @@
                         <span>可问答</span>
                     </div>
                     <div class="status-card">
-                        <strong th:text="${#lists.size(docs.?[status.name() == 'PROCESSING' || status.name() == 'PENDING'])}">0</strong>
+                        <strong th:text="${#lists.size(docs.?[status.name() == 'PROCESSING' || status.name() == 'PENDING' || status.name() == 'FAILED_RETRYABLE'])}">0</strong>
                         <span>处理中</span>
                     </div>
                 </div>
-                <p class="helper-copy">处理中或排队中的文档会自动刷新页面，完成后按钮会变为可用。</p>
+                <p class="helper-copy">只有存在排队中、处理中或重试中的文档时，页面才会每 10 秒自动刷新一次。</p>
             </article>
         </section>
 
@@ -86,13 +92,14 @@
                         <td colspan="4" class="empty-tip">暂无文档，请先上传 PDF。</td>
                     </tr>
 
-                    <tr th:each="doc : ${docs}">
-                        <td class="filename-cell" th:text="${doc.title}" th:title="${doc.title}">项目需求文档.pdf</td>
+                    <tr th:each="doc : ${docs}" th:attr="data-status=${doc.status.name()}">
+                        <td class="filename-cell" th:text="${doc.title}" th:title="${doc.title}">sample.pdf</td>
                         <td>
                             <span th:if="${doc.status.name() == 'COMPLETED'}" class="badge badge-success">已完成</span>
                             <span th:if="${doc.status.name() == 'PROCESSING'}" class="badge badge-warning">处理中</span>
+                            <span th:if="${doc.status.name() == 'FAILED_RETRYABLE'}" class="badge badge-warning" th:title="${doc.errorMessage}">重试中</span>
                             <span th:if="${doc.status.name() == 'PENDING'}" class="badge badge-pending">排队中</span>
-                            <span th:if="${doc.status.name() == 'FAILED'}" class="badge badge-danger">失败</span>
+                            <span th:if="${doc.status.name() == 'FAILED'}" class="badge badge-danger" th:title="${doc.errorMessage}">失败</span>
                         </td>
                         <td class="time-cell" th:text="${doc.uploadedAt}" th:title="${doc.uploadedAt}">2026-05-13 14:30</td>
                         <td class="actions-cell">
@@ -123,46 +130,87 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function () {
-        const hasPending = document.body.innerText.includes("处理中") || document.body.innerText.includes("排队中");
-        if (hasPending) {
-            setTimeout(() => window.location.reload(), 2500);
-        }
+        bindUploadControls();
+        bindDeleteButtons();
+        scheduleStatusRefresh();
+    });
 
+    function bindUploadControls() {
+        const fileInput = document.getElementById("fileInput");
+        const chooseFileBtn = document.getElementById("chooseFileBtn");
+        const dropArea = document.getElementById("dropArea");
+
+        chooseFileBtn.addEventListener("click", () => fileInput.click());
+        dropArea.addEventListener("click", () => fileInput.click());
+        dropArea.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                fileInput.click();
+            }
+        });
+
+        fileInput.addEventListener("change", () => showFileName(fileInput));
+
+        dropArea.addEventListener("dragover", event => {
+            event.preventDefault();
+            dropArea.classList.add("dragover");
+        });
+
+        dropArea.addEventListener("dragleave", () => {
+            dropArea.classList.remove("dragover");
+        });
+
+        dropArea.addEventListener("drop", event => {
+            event.preventDefault();
+            dropArea.classList.remove("dragover");
+
+            const files = Array.from(event.dataTransfer.files || []);
+            if (files.length > 0 && files.every(file => file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))) {
+                fileInput.files = event.dataTransfer.files;
+                showFileName(fileInput);
+            } else {
+                alert("请选择 PDF 文件。");
+            }
+        });
+    }
+
+    function showFileName(input) {
+        const files = Array.from(input.files || []);
+        const fileName = document.getElementById("fileName");
+        const submitBtn = document.getElementById("uploadSubmitBtn");
+        if (files.length === 0) {
+            fileName.innerHTML = '<span class="selected-file-label">尚未选择文件</span>';
+            fileName.title = "尚未选择文件";
+            submitBtn.disabled = true;
+            return;
+        }
+        const fileList = files
+            .map(file => `<strong>${escapeHtml(file.name)}</strong>`)
+            .join("");
+        fileName.innerHTML = `
+            <span class="selected-file-label">已选择 ${files.length} 个 PDF</span>
+            ${fileList}
+        `;
+        fileName.title = files.map(file => file.name).join(", ");
+        submitBtn.disabled = false;
+    }
+
+    function bindDeleteButtons() {
         document.querySelectorAll(".delete-doc-btn").forEach(button => {
             button.addEventListener("click", () => {
                 confirmDelete(button.dataset.docId, button.dataset.docTitle);
             });
         });
-    });
-
-    function showFileName(input) {
-        const file = input.files[0];
-        document.getElementById("fileName").textContent = file ? "已选择：" + file.name : "尚未选择文件";
     }
 
-    const dropArea = document.getElementById("dropArea");
-
-    dropArea.addEventListener("dragover", (event) => {
-        event.preventDefault();
-        dropArea.classList.add("dragover");
-    });
-
-    dropArea.addEventListener("dragleave", () => {
-        dropArea.classList.remove("dragover");
-    });
-
-    dropArea.addEventListener("drop", (event) => {
-        event.preventDefault();
-        dropArea.classList.remove("dragover");
-
-        const file = event.dataTransfer.files[0];
-        if (file && file.type === "application/pdf") {
-            document.getElementById("fileInput").files = event.dataTransfer.files;
-            showFileName({ files: [file] });
-        } else {
-            alert("请选择 PDF 文件。");
+    function scheduleStatusRefresh() {
+        const refreshStatuses = new Set(["PENDING", "PROCESSING", "FAILED_RETRYABLE"]);
+        const shouldRefresh = Array.from(document.querySelectorAll("[data-status]"))
+            .some(row => refreshStatuses.has(row.dataset.status));
+        if (shouldRefresh) {
+            setTimeout(() => window.location.reload(), 10000);
         }
-    });
+    }
 
     function confirmDelete(docId, docTitle) {
         if (!confirm(`确定要删除文档 "${docTitle}" (ID: ${docId}) 吗？`)) return;
@@ -181,6 +229,16 @@
                 }
             })
             .catch(() => alert("网络异常，删除失败，请稍后重试。"));
+    }
+
+    function escapeHtml(value) {
+        return value.replace(/[&<>"']/g, char => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        }[char]));
     }
 </script>
 

@@ -1,10 +1,10 @@
 package com.example.demo.service;
+
 import com.example.demo.config.RabbitConfig;
 import com.example.demo.entity.Conversation;
 import com.example.demo.entity.DocStatus;
 import com.example.demo.entity.Document;
 import com.example.demo.entity.DocumentChunk;
-
 import com.example.demo.repository.ChatMessageRepository;
 import com.example.demo.repository.ConversationRepository;
 import com.example.demo.repository.DocumentChunkRepository;
@@ -16,16 +16,18 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.springframework.amqp.core.MessageDeliveryMode;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-
-
 
 @Service
 @RequiredArgsConstructor
@@ -36,177 +38,230 @@ public class DocumentService {
     private final RagService ragService;
     private final ChunkSearchRepository chunkSearchRepository;
     private final RagRetrievalCacheService ragRetrievalCacheService;
-    private final RabbitTemplate rabbitTemplate; // 注入 RabbitTemplate
+    private final RabbitTemplate rabbitTemplate;
+    private final ConversationRepository conversationRepository;
+    private final ChatMessageRepository chatMessageRepository;
+    private final DocumentRepository documentRepository;
 
-    @Autowired
-    private ConversationRepository conversationRepository;
-    @Autowired
-    private ChatMessageRepository chatMessageRepository;
-    @Autowired
-    private DocumentRepository documentRepository;
+    @Value("${document.processing.stale-processing-minutes:30}")
+    private long staleProcessingMinutes;
 
-
-    // Step 1: 上传文档（只存基本信息，不解析）
     public Document saveDocument(Long userId, String title, String filePath) {
         Document doc = new Document();
         doc.setUserId(userId);
         doc.setTitle(title);
         doc.setFilePath(filePath);
-        doc.setStatus(DocStatus.PENDING); // 初始状态
+        doc.setStatus(DocStatus.PENDING);
+        doc.setRetryCount(0);
         doc = docRepo.save(doc);
 
-        // 发送 MQ 消息
-        rabbitTemplate.convertAndSend(RabbitConfig.DOC_QUEUE, doc.getId());
-
+        sendProcessMessage(doc.getId(), 0);
         return doc;
     }
 
-    // Step 2: 异步处理文档（由 Consumer 调用）
-    @Transactional
+    public void sendProcessMessage(Long docId, int retryCount) {
+        String correlationId = "doc-process-" + docId + "-" + retryCount;
+        rabbitTemplate.convertAndSend(
+                RabbitConfig.DOC_EXCHANGE,
+                RabbitConfig.DOC_ROUTING_KEY,
+                docId,
+                message -> {
+                    message.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+                    message.getMessageProperties().setHeader("docId", docId);
+                    message.getMessageProperties().setHeader("retryCount", retryCount);
+                    message.getMessageProperties().setCorrelationId(correlationId);
+                    return message;
+                },
+                new CorrelationData(correlationId)
+        );
+    }
+
+    @Transactional(dontRollbackOn = DocumentProcessingException.class)
     public void processDocumentAsync(Long docId) {
-        // 1. 获取文档记录
-        Document doc = docRepo.findById(docId).orElse(null);
-        if (doc == null) return;
+        processDocumentAsync(docId, false);
+    }
+
+    @Transactional(dontRollbackOn = DocumentProcessingException.class)
+    public void processDocumentAsync(Long docId, boolean redelivered) {
+        Document before = docRepo.findById(docId)
+                .orElseThrow(() -> new NonRetryableDocumentProcessingException("Document does not exist. id=" + docId));
+
+        if (before.getStatus() == DocStatus.COMPLETED) {
+            return;
+        }
+        if (before.getStatus() == DocStatus.PROCESSING && !redelivered && !isStaleProcessing(before)) {
+            return;
+        }
+
+        List<DocStatus> allowedStatuses = allowedStatuses(before, redelivered);
+        int locked = docRepo.markProcessing(docId, allowedStatuses, DocStatus.PROCESSING, LocalDateTime.now());
+        if (locked == 0) {
+            return;
+        }
+
+        Document doc = docRepo.findById(docId)
+                .orElseThrow(() -> new NonRetryableDocumentProcessingException("Document does not exist. id=" + docId));
 
         try {
-            // 更新状态：处理中
-            doc.setStatus(DocStatus.PROCESSING);
-            docRepo.save(doc);
-
-            // 2. 解析 PDF
-            File file = new File(doc.getFilePath());
-            PDDocument pdf = PDDocument.load(file);
-            PDFTextStripper stripper = new PDFTextStripper();
-            String text = stripper.getText(pdf);
-            pdf.close();
-
-            // 更新文档内容
-            doc.setContent(text);
-
-            // 3. 切片
-            List<String> chunks = TextSplitter.splitText(text, 800, 200);
-
-            // 4. Embedding 并存入向量库
-            saveChunks(doc.getId(), chunks);
-
-            // 5. 更新状态：完成
+            rebuildIndexes(doc);
             doc.setStatus(DocStatus.COMPLETED);
+            doc.setErrorMessage(null);
+            doc.setProcessedAt(LocalDateTime.now());
             docRepo.save(doc);
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            doc.setStatus(DocStatus.FAILED);
-            docRepo.save(doc);
+        } catch (NonRetryableDocumentProcessingException ex) {
+            markFailed(docId, ex.getMessage());
+            throw ex;
+        } catch (Exception ex) {
+            markRetryableFailure(docId, ex.getMessage());
+            throw new RetryableDocumentProcessingException("Retryable document processing failure. docId=" + docId, ex);
         }
     }
 
+    private void rebuildIndexes(Document doc) {
+        Long docId = doc.getId();
+        cleanupDocumentIndexes(doc.getUserId(), docId);
 
-    // 保存chunk并生成 chunk embedding
+        File file = new File(doc.getFilePath());
+        if (!file.exists() || !file.isFile()) {
+            throw new NonRetryableDocumentProcessingException("PDF file does not exist: " + file.getAbsolutePath());
+        }
+
+        String text = extractPdfText(file);
+        if (text == null || text.isBlank()) {
+            throw new NonRetryableDocumentProcessingException("PDF text is empty. docId=" + docId);
+        }
+
+        doc.setContent(text);
+        docRepo.save(doc);
+
+        List<String> chunks = TextSplitter.splitText(text, 800, 200);
+        saveChunks(docId, chunks);
+    }
+
+    private String extractPdfText(File file) {
+        try (PDDocument pdf = PDDocument.load(file)) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            return stripper.getText(pdf);
+        } catch (Exception ex) {
+            throw new NonRetryableDocumentProcessingException("PDF parse failed: " + ex.getMessage(), ex);
+        }
+    }
+
+    private void cleanupDocumentIndexes(Long userId, Long docId) {
+        chunkRepo.deleteByDocumentId(docId);
+        chunkSearchRepository.deleteByDocumentId(docId);
+        ragRetrievalCacheService.evictDocument(userId, docId);
+    }
+
     public void saveChunks(Long docId, List<String> chunks) {
-
         int index = 0;
         for (String text : chunks) {
+            if (text == null || text.strip().isEmpty()) {
+                continue;
+            }
 
-            if (text.strip().length() == 0) continue; // 跳过空文本
-            // 1) 创建 chunk
-            DocumentChunk c = new DocumentChunk();
-            c.setDocumentId(docId);
-            c.setChunkIndex(index++);
-            c.setText(text);
-            chunkRepo.save(c);
-            // 2) 生成 chunk 的 embedding
-            List<Double> vec = ragService.embedding(text);
-            // 3) 写入 embedding JSON
-            c.setEmbeddingVector(vec);
-            // 4) 数据库存储
-            chunkRepo.save(c);
+            int chunkIndex = index++;
+            DocumentChunk chunk = new DocumentChunk();
+            chunk.setDocumentId(docId);
+            chunk.setChunkIndex(chunkIndex);
+            chunk.setText(text);
+            chunk = chunkRepo.save(chunk);
 
-            // OLD: 旧逻辑到此结束（仅写入 PG + pgvector）
-            // NEW: 新增写入 Elasticsearch，支持 BM25 召回
+            List<Double> vector = ragService.embedding(text);
+            chunk.setEmbeddingVector(vector);
+            chunk = chunkRepo.save(chunk);
+
             ChunkSearchDoc searchDoc = new ChunkSearchDoc();
-            searchDoc.setId(String.valueOf(c.getId()));
-            searchDoc.setChunkId(c.getId());
+            searchDoc.setId(docId + "_" + chunkIndex);
+            searchDoc.setChunkId(chunk.getId());
             searchDoc.setDocumentId(docId);
-            searchDoc.setChunkIndex(c.getChunkIndex());
-            searchDoc.setText(c.getText());
+            searchDoc.setChunkIndex(chunkIndex);
+            searchDoc.setText(chunk.getText());
             searchDoc.setUpdatedAt(Instant.now());
             chunkSearchRepository.save(searchDoc);
         }
     }
 
-
-    //显示所有文档
     public List<Document> listDocs(Long userId) {
         return docRepo.findByUserId(userId);
     }
 
+    public void markRetryableFailure(Long docId, String message) {
+        docRepo.findById(docId).ifPresent(doc -> {
+            doc.setStatus(DocStatus.FAILED_RETRYABLE);
+            doc.setRetryCount(nullToZero(doc.getRetryCount()) + 1);
+            doc.setErrorMessage(limitMessage(message));
+            docRepo.save(doc);
+        });
+    }
 
-    /*
-     * 事务性删除文档、相关的对话和聊天记录，以及本地文件。
-     * 先删除chat_massage、再删除conservative、再删除document，这样才不会报错！
-     */
+    public void markFailed(Long docId, String message) {
+        docRepo.findById(docId).ifPresent(doc -> {
+            doc.setStatus(DocStatus.FAILED);
+            doc.setErrorMessage(limitMessage(message));
+            doc.setProcessedAt(LocalDateTime.now());
+            docRepo.save(doc);
+        });
+    }
+
     @Transactional
     public void deleteDocumentWithRelatedData(Long docId, Long userId) {
-
-
-        // --- 1. 查找 Document 记录 ---
-        // OLD: 仅按 docId 查找，缺少用户归属校验
-        // Document document = documentRepository.findById(docId)
-        //         .orElseThrow(() -> new RuntimeException("文档不存在或已被删除！ID: " + docId));
         Document document = documentRepository.findByIdAndUserId(docId, userId)
-                .orElseThrow(() -> new RuntimeException("文档不存在、已被删除或无访问权限！ID: " + docId));
+                .orElseThrow(() -> new RuntimeException("文档不存在、已删除或无访问权限。ID: " + docId));
 
-        // 获取文件路径用于本地删除
         String filePath = document.getFilePath();
 
-        // --- 2. 查找相关的 Conversation (0或1个) ---
-        String expectedTitle = "Doc-" + docId + " 对话";
-        Optional<Conversation> conversationOpt = conversationRepository.findByTitle(expectedTitle);
+        deleteConversation("Doc-" + docId + " 对话");
+        deleteConversation("Agent-Doc-" + docId);
 
-        if (conversationOpt.isPresent()) {
-            Conversation conversation = conversationOpt.get();
-            //获取对话的id
-            Long conversationId = conversation.getId();
-
-            // --- 3. 删除相关的 Chat_Message ---
-            // 批量删除该对话下的所有聊天记录
-            chatMessageRepository.deleteByConversationId(conversationId);
-
-            // --- 4. 删除 Conversation ---
-            conversationRepository.delete(conversation);
-        }
-        // 如果 conversationOpt.isEmpty()，则跳过步骤 3 和 4，因为没有关联的对话。
-
-
-
-        // --- 5. 删除关联的 DocumentChunk 记录
-        // ----------------------------------------------------
-        chunkRepo.deleteByDocumentId(docId);
-        chunkSearchRepository.deleteByDocumentId(docId);
-        ragRetrievalCacheService.evictDocument(userId, docId);
-        // ----------------------------------------------------
-
-        // --- 6. 删除 Document 记录 ---
+        cleanupDocumentIndexes(userId, docId);
         documentRepository.delete(document);
-
-        // --- 7. 删除本地文件 ---
         deleteLocalDocumentFile(filePath);
     }
 
-    /*
-     * 删除服务器上的本地文件。
-     */
-    private void deleteLocalDocumentFile(String filePath) {
-        File file = new File(filePath);
+    private void deleteConversation(String title) {
+        Optional<Conversation> conversationOpt = conversationRepository.findByTitle(title);
+        if (conversationOpt.isEmpty()) {
+            return;
+        }
+        Conversation conversation = conversationOpt.get();
+        chatMessageRepository.deleteByConversationId(conversation.getId());
+        conversationRepository.delete(conversation);
+    }
 
-        if (file.exists()) {
-            if (!file.delete()) {
-                // 建议记录日志，但通常不抛出异常中断事务（除非文件删除是核心业务）
-                System.err.println("本地文件删除失败！路径: " + file.getAbsolutePath());
-            }
+    private void deleteLocalDocumentFile(String filePath) {
+        if (filePath == null || filePath.isBlank()) {
+            return;
+        }
+        File file = new File(filePath);
+        if (file.exists() && !file.delete()) {
+            System.err.println("Failed to delete local document file: " + file.getAbsolutePath());
         }
     }
 
+    private boolean isStaleProcessing(Document doc) {
+        if (doc.getProcessingStartedAt() == null) {
+            return true;
+        }
+        long minutes = Math.max(1, staleProcessingMinutes);
+        return doc.getProcessingStartedAt().plus(Duration.ofMinutes(minutes)).isBefore(LocalDateTime.now());
+    }
 
+    private List<DocStatus> allowedStatuses(Document doc, boolean redelivered) {
+        if (doc.getStatus() == DocStatus.PROCESSING && (redelivered || isStaleProcessing(doc))) {
+            return List.of(DocStatus.PENDING, DocStatus.FAILED_RETRYABLE, DocStatus.PROCESSING);
+        }
+        return List.of(DocStatus.PENDING, DocStatus.FAILED_RETRYABLE);
+    }
 
+    private int nullToZero(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private String limitMessage(String message) {
+        if (message == null) {
+            return null;
+        }
+        return message.length() <= 2000 ? message : message.substring(0, 2000) + "\n[TRUNCATED]";
+    }
 }

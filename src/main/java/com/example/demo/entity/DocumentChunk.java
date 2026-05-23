@@ -8,6 +8,9 @@ import io.hypersistence.utils.hibernate.type.array.ListArrayType;
 import java.util.List;
 
 @Entity
+@Table(uniqueConstraints = {
+        @UniqueConstraint(name = "uk_document_chunk_doc_index", columnNames = {"document_id", "chunk_index"})
+})
 @Data
 public class DocumentChunk {
 
@@ -15,7 +18,10 @@ public class DocumentChunk {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "document_id")
     private Long documentId;
+
+    @Column(name = "chunk_index")
     private int chunkIndex;
 
     @Column(columnDefinition = "TEXT")

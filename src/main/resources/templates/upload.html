@@ -18,7 +18,7 @@
     </div>
 
     <form action="/doc/upload" method="post" enctype="multipart/form-data" id="uploadForm">
-        <input type="file" name="file" accept="application/pdf" id="fileInput" required onchange="showFileName(this)">
+        <input type="file" name="files" accept="application/pdf" id="fileInput" multiple required onchange="showFileName(this)">
         <div class="file-name" id="fileName"></div>
         <button type="submit" class="btn">上传文档</button>
     </form>

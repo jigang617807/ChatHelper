@@ -70,8 +70,9 @@
                             <td>
                                 <span th:if="${doc.status.name() == 'COMPLETED'}" class="badge badge-success">已完成</span>
                                 <span th:if="${doc.status.name() == 'PROCESSING'}" class="badge badge-warning">处理中</span>
+                                <span th:if="${doc.status.name() == 'FAILED_RETRYABLE'}" class="badge badge-warning" th:title="${doc.errorMessage}">重试中</span>
                                 <span th:if="${doc.status.name() == 'PENDING'}" class="badge badge-pending">排队中</span>
-                                <span th:if="${doc.status.name() == 'FAILED'}" class="badge badge-danger">失败</span>
+                                <span th:if="${doc.status.name() == 'FAILED'}" class="badge badge-danger" th:title="${doc.errorMessage}">失败</span>
                             </td>
                             <td class="time-cell" th:text="${doc.uploadedAt}" th:title="${doc.uploadedAt}">2026-05-13 14:30</td>
                             <td class="actions-cell">
@@ -95,7 +96,9 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function () {
-        const hasPending = document.body.innerText.includes("处理中") || document.body.innerText.includes("排队中");
+        const hasPending = document.body.innerText.includes("处理中")
+            || document.body.innerText.includes("排队中")
+            || document.body.innerText.includes("重试中");
         if (hasPending) {
             setTimeout(() => window.location.reload(), 2500);
         }

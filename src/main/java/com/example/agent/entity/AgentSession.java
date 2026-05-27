@@ -1,5 +1,6 @@
 package com.example.agent.entity;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -29,6 +30,12 @@ public class AgentSession {
 
     @Enumerated(EnumType.STRING)
     private AgentSessionStatus status = AgentSessionStatus.ACTIVE;
+
+    @Column(name = "conversation_summary", columnDefinition = "TEXT")
+    private String conversationSummary;
+
+    @Column(name = "summarized_message_id")
+    private Long summarizedMessageId;
 
     private LocalDateTime createdAt = LocalDateTime.now();
 

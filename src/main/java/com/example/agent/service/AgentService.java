@@ -6,9 +6,11 @@ import com.example.agent.executor.ReActAgentExecutor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -20,19 +22,29 @@ import java.util.List;
 @Service
 public class AgentService {
 
+    private static final int MIN_RECENT_MESSAGE_LIMIT = 4;
+    private static final int MAX_RECENT_MESSAGE_LIMIT = 40;
+
     private final ChatModel chatModel;
     private final AgentSessionService sessionService;
     private final AgentStepService stepService;
     private final ReActAgentExecutor reactAgentExecutor;
+    private final int recentMessageLimit;
+    private final int summaryMaxChars;
 
     public AgentService(@Qualifier("agentDeepSeekChatModel") ChatModel chatModel,
                         AgentSessionService sessionService,
                         AgentStepService stepService,
-                        ReActAgentExecutor reactAgentExecutor) {
+                        ReActAgentExecutor reactAgentExecutor,
+                        @Value("${agent.history.recent-message-limit:12}") int recentMessageLimit,
+                        @Value("${agent.history.summary-max-chars:3000}") int summaryMaxChars) {
         this.chatModel = chatModel;
         this.sessionService = sessionService;
         this.stepService = stepService;
         this.reactAgentExecutor = reactAgentExecutor;
+        this.recentMessageLimit = Math.max(MIN_RECENT_MESSAGE_LIMIT,
+                Math.min(recentMessageLimit, MAX_RECENT_MESSAGE_LIMIT));
+        this.summaryMaxChars = Math.max(500, summaryMaxChars);
     }
 
     public Flux<String> streamAsk(Long userId, Long sessionId, String question) {
@@ -43,7 +55,7 @@ public class AgentService {
 
         AgentSession session = sessionService.getOrCreateSession(userId, sessionId);
         AgentMessage userMessage = sessionService.saveMessage(session.getId(), "user", safeQuestion);
-        List<Message> history = toSpringMessages(sessionService.listMessages(session.getId()), userMessage.getId());
+        List<Message> history = buildHistoryWithSummary(session, userMessage.getId());
 
         if (!requiresReactTools(safeQuestion)) {
             return streamDirectAnswer(session, userMessage, safeQuestion, history);
@@ -111,6 +123,98 @@ public class AgentService {
             }
         }
         return false;
+    }
+
+    private List<Message> buildHistoryWithSummary(AgentSession session, Long currentUserMessageId) {
+        List<AgentMessage> messages = sessionService.listMessages(session.getId());
+        List<AgentMessage> previousMessages = messages.stream()
+                .filter(message -> message.getId() == null || !message.getId().equals(currentUserMessageId))
+                .toList();
+        if (previousMessages.isEmpty()) {
+            return List.of();
+        }
+
+        int recentFrom = Math.max(0, previousMessages.size() - recentMessageLimit);
+        List<AgentMessage> olderMessages = previousMessages.subList(0, recentFrom);
+        List<AgentMessage> recentMessages = previousMessages.subList(recentFrom, previousMessages.size());
+
+        String summary = session.getConversationSummary();
+        Long summarizedMessageId = session.getSummarizedMessageId();
+        Long lastSummarizedMessageId = summarizedMessageId;
+        List<AgentMessage> unsummarizedOlderMessages = olderMessages.stream()
+                .filter(message -> message.getId() != null)
+                .filter(message -> lastSummarizedMessageId == null || message.getId() > lastSummarizedMessageId)
+                .toList();
+
+        if (!unsummarizedOlderMessages.isEmpty()) {
+            try {
+                summary = summarizeHistory(summary, unsummarizedOlderMessages);
+                summarizedMessageId = unsummarizedOlderMessages.get(unsummarizedOlderMessages.size() - 1).getId();
+                session = sessionService.updateSummary(session.getId(), summary, summarizedMessageId);
+                summary = session.getConversationSummary();
+            } catch (RuntimeException ex) {
+                stepService.recordError(session.getId(), currentUserMessageId,
+                        "Conversation summary update failed: " + ex.getMessage());
+            }
+        }
+
+        List<Message> history = new ArrayList<>();
+        if (summary != null && !summary.isBlank()) {
+            history.add(new SystemMessage("""
+                    Earlier conversation memory. Use it as background context, but prefer recent messages when details conflict:
+                    %s
+                    """.formatted(summary)));
+        }
+        history.addAll(toSpringMessages(recentMessages, currentUserMessageId));
+        return history;
+    }
+
+    private String summarizeHistory(String existingSummary, List<AgentMessage> messagesToSummarize) {
+        String transcript = messagesToSummarize.stream()
+                .map(this::formatForSummary)
+                .reduce("", (left, right) -> left + right + "\n");
+        String summary = ChatClient.create(chatModel)
+                .prompt()
+                .system("""
+                        You maintain compact long-term memory for a Chinese AI agent conversation.
+                        Merge the existing memory and new transcript into one concise Chinese memory note.
+                        Preserve stable user preferences, project facts, decisions, constraints, unresolved tasks, and useful technical context.
+                        Remove chit-chat, duplicated wording, and obsolete details.
+                        Do not mention that this is a summary.
+                        """)
+                .user("""
+                        Existing memory:
+                        %s
+
+                        New transcript:
+                        %s
+
+                        Write the updated memory within %d Chinese characters.
+                        """.formatted(blankToDefault(existingSummary, "(none)"), transcript, summaryMaxChars))
+                .call()
+                .content();
+        return truncateSummary(summary);
+    }
+
+    private String formatForSummary(AgentMessage message) {
+        String role = "assistant".equalsIgnoreCase(message.getRole()) ? "Assistant" : "User";
+        String content = message.getContent() == null ? "" : message.getContent().trim();
+        return role + ": " + content;
+    }
+
+    private String truncateSummary(String summary) {
+        if (summary == null) {
+            return "";
+        }
+        String value = summary.trim();
+        if (value.length() <= summaryMaxChars) {
+            return value;
+        }
+        return value.substring(0, summaryMaxChars) + "\n[summary truncated]";
+    }
+
+    private String blankToDefault(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value;
     }
 
     private List<Message> toSpringMessages(List<AgentMessage> messages, Long currentUserMessageId) {

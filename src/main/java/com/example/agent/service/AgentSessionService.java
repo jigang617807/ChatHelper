@@ -64,10 +64,22 @@ public class AgentSessionService {
     }
 
     @Transactional
+    public AgentSession updateSummary(Long sessionId, String conversationSummary, Long summarizedMessageId) {
+        AgentSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent session not found"));
+        session.setConversationSummary(conversationSummary);
+        session.setSummarizedMessageId(summarizedMessageId);
+        return sessionRepository.save(session);
+    }
+
+    @Transactional
     public void clearSession(Long userId, Long sessionId) {
         AgentSession session = sessionRepository.findByIdAndUserId(sessionId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Agent session not found"));
         messageRepository.deleteBySessionId(session.getId());
         stepRepository.deleteBySessionId(session.getId());
+        session.setConversationSummary(null);
+        session.setSummarizedMessageId(null);
+        sessionRepository.save(session);
     }
 }

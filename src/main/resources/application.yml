@@ -68,6 +68,9 @@ zhipu:
   chat-model: "glm-4.7-flash"
 
 agent:
+  history:
+    recent-message-limit: ${AGENT_HISTORY_RECENT_MESSAGE_LIMIT:12}
+    summary-max-chars: ${AGENT_HISTORY_SUMMARY_MAX_CHARS:3000}
   deepseek:
     api-key: ${DEEPSEEK_API_KEY:}
     base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}

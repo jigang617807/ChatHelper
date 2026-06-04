@@ -1,0 +1,352 @@
+[
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "这个专利方法主要解决什么问题？",
+    "goldKeywords": ["环境要素信息", "异质网络", "关键节点"],
+    "minKeywordHits": 2,
+    "type": "summary"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "该方法如何建模多层电力网络的跨层关系？",
+    "goldKeywords": ["跨层连边", "复数空间", "旋转操作"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "环境要素信息包括哪些内容？",
+    "goldKeywords": ["风速", "温度", "湿度", "降水量", "气压"],
+    "minKeywordHits": 3,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "关键节点挖掘策略和强化学习有什么关系？",
+    "goldKeywords": ["强化学习", "节点重要性", "自然灾害"],
+    "minKeywordHits": 2,
+    "type": "reasoning"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "Newman 这篇文章主要研究什么网络？",
+    "goldKeywords": ["scientific collaboration networks", "scientists", "authored a paper together"],
+    "minKeywordHits": 1,
+    "type": "summary"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "论文使用了哪些数据库来构建合作网络？",
+    "goldKeywords": ["MEDLINE", "Los Alamos e-Print Archive", "NCSTRL"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "科学合作网络是否具有小世界特征？",
+    "goldKeywords": ["small worlds", "short path", "intermediate acquaintances"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "文章还分析了作者合作关系的哪些结构特征？",
+    "goldKeywords": ["numbers of collaborators", "clustering", "patterns of collaboration"],
+    "minKeywordHits": 2,
+    "type": "summary"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "这个专利提出的方法主要用于识别什么？",
+    "goldKeywords": ["多目标优化算法", "电力网络", "关键节点"],
+    "minKeywordHits": 2,
+    "type": "summary"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "该方法如何表征电力网络？",
+    "goldKeywords": ["二元组", "V", "E", "输电线"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "该专利中节点失效和负载转移是如何判断的？",
+    "goldKeywords": ["初始负载", "容量", "负载增加", "失效"],
+    "minKeywordHits": 2,
+    "type": "reasoning"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "多目标优化算法中个体编码表示什么？",
+    "goldKeywords": ["个体编码", "二进制", "关键节点组合"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_北京化工大学票据粘贴模版.pdf",
+    "question": "票据粘贴的基本要点是什么？",
+    "goldKeywords": ["四点粘贴牢", "平铺勿遮盖", "归类分开粘"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_北京化工大学票据粘贴模版.pdf",
+    "question": "小于 A4 纸的原始凭证应该如何粘贴？",
+    "goldKeywords": ["小于A4纸", "横放", "平铺粘贴"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_北京化工大学票据粘贴模版.pdf",
+    "question": "粘贴票据时不能使用哪些固定方式？",
+    "goldKeywords": ["订书机", "大头针", "回形针"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_北京化工大学票据粘贴模版.pdf",
+    "question": "票据粘贴单上需要填写哪些合计信息？",
+    "goldKeywords": ["票据张数", "金额", "合计"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "该专利中的电力网络状态信息包括哪些？",
+    "goldKeywords": ["电力网络状态信息", "电压", "功率"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "动态嵌入机制是如何根据风险信息调整节点表示的？",
+    "goldKeywords": ["动态嵌入机制", "自然灾害风险评分", "自适应调整"],
+    "minKeywordHits": 2,
+    "type": "reasoning"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "RotatE 在跨层关系建模中起什么作用？",
+    "goldKeywords": ["RotatE", "知识图谱嵌入", "复数域", "旋转操作"],
+    "minKeywordHits": 2,
+    "type": "term"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "多锚点聚合在跨层网络表示学习中有什么作用？",
+    "goldKeywords": ["多锚点聚合", "跨层锚点", "加权融合"],
+    "minKeywordHits": 2,
+    "type": "reasoning"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "图卷积神经网络在该方法中用于提取什么信息？",
+    "goldKeywords": ["图卷积神经网络", "单层网络", "拓扑结构"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "基于深度强化学习的节点重要性评估机制要识别什么？",
+    "goldKeywords": ["深度强化学习", "节点重要性评估", "关键节点"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "跨层关系建模需要捕获哪些关系模式？",
+    "goldKeywords": ["对称性", "反对称性", "逆向性", "组合性"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "该方法对智能电网有什么应用价值？",
+    "goldKeywords": ["灾害应对", "风险评估", "安全调度", "韧性"],
+    "minKeywordHits": 2,
+    "type": "summary"
+  },
+  {
+    "doc": "u1_F_一种环境要素信息嵌入的异质网络关键节点挖掘方法--代理人二稿.pdf",
+    "question": "环境要素嵌入和跨层旋转嵌入分别解决什么问题？",
+    "goldKeywords": ["环境要素", "跨层旋转嵌入", "跨层关系"],
+    "minKeywordHits": 2,
+    "type": "comparison"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "论文中 social network 是如何抽象表示的？",
+    "goldKeywords": ["social network", "vertices", "edges", "acquaintance"],
+    "minKeywordHits": 2,
+    "type": "term"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "平均度在社会网络传播中为什么重要？",
+    "goldKeywords": ["average degree", "propagation", "rumor", "flu"],
+    "minKeywordHits": 2,
+    "type": "reasoning"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "Milgram 的小世界实验大致是如何设计的？",
+    "goldKeywords": ["Stanley Milgram", "Nebraska", "Boston", "stockbroker"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "论文如何定义两个科学家之间存在合作边？",
+    "goldKeywords": ["scientists", "connected", "authored a paper together"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "论文覆盖了哪些学科领域的合作网络？",
+    "goldKeywords": ["biomedical research", "physics", "computer science"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "小世界性质在科学合作网络中体现为什么？",
+    "goldKeywords": ["small worlds", "short path", "randomly chosen pairs"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "论文为什么关注 clustering？",
+    "goldKeywords": ["presence of clustering", "networks", "collaboration"],
+    "minKeywordHits": 2,
+    "type": "reasoning"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "不同领域的科学合作模式是否存在差异？",
+    "goldKeywords": ["apparent differences", "patterns of collaboration", "fields studied"],
+    "minKeywordHits": 2,
+    "type": "summary"
+  },
+  {
+    "doc": "u1_The structure of scientific collaboration networks.pdf",
+    "question": "社会网络结构会影响哪些传播现象？",
+    "goldKeywords": ["spread of information", "disease", "patterns of human interaction"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "该专利的发明名称是什么？",
+    "goldKeywords": ["基于多目标优化算法", "电力网络", "关键节点识别方法"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "该专利的专利权人和部分发明人是谁？",
+    "goldKeywords": ["安徽大学", "张磊", "夏佳军"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "节点容量的计算中 T 参数表示什么？",
+    "goldKeywords": ["容量", "T", "健壮程度"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "级联失效过程什么时候结束？",
+    "goldKeywords": ["没有新的节点失效", "级联过程结束", "失效"],
+    "minKeywordHits": 2,
+    "type": "procedure"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "多目标优化算法初始化阶段涉及哪些参数？",
+    "goldKeywords": ["种群规模", "最大迭代次数", "局部搜索次数"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "个体编码中 xi 等于 1 和 0 分别代表什么？",
+    "goldKeywords": ["xi＝1", "关键节点", "xi＝0", "正常状态"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "该方法为什么能为不同需求的决策者提供选择？",
+    "goldKeywords": ["不同关键节点数量", "关键节点组合", "决策者"],
+    "minKeywordHits": 2,
+    "type": "reasoning"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "电力网络中邻居节点是如何定义的？",
+    "goldKeywords": ["eij＝1", "输电线路", "邻居节点"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_一种基于多目标优化算法的电力网络关键节点识别方法.pdf",
+    "question": "该方法的核心流程包括哪些阶段？",
+    "goldKeywords": ["个体编码", "初始化", "网络评估"],
+    "minKeywordHits": 2,
+    "type": "procedure"
+  },
+  {
+    "doc": "u1_北京化工大学票据粘贴模版.pdf",
+    "question": "票据粘贴区域左侧虚线有什么要求？",
+    "goldKeywords": ["虚线左侧", "不贴票"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_北京化工大学票据粘贴模版.pdf",
+    "question": "票据粘贴顺序原则是什么？",
+    "goldKeywords": ["从上至下", "从左至右", "粘贴顺序"],
+    "minKeywordHits": 2,
+    "type": "procedure"
+  },
+  {
+    "doc": "u1_北京化工大学票据粘贴模版.pdf",
+    "question": "规格等于或大于 A4 的原始凭证如何处理？",
+    "goldKeywords": ["等于或大于A4", "无需粘贴", "调整成A4"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_北京化工大学票据粘贴模版.pdf",
+    "question": "粘贴票据时应该使用什么胶粘材料，不能使用什么？",
+    "goldKeywords": ["使用胶水", "双面胶", "透明胶"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_北京化工大学票据粘贴模版.pdf",
+    "question": "粘贴单、网报报销单和其他附件之间是否需要粘贴？",
+    "goldKeywords": ["粘贴单", "网报报销单", "长尾夹"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_北京化工大学票据粘贴模版.pdf",
+    "question": "票据签字或说明应该写在哪里？",
+    "goldKeywords": ["票据正面空白处", "请勿在票据背面", "添加说明"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  },
+  {
+    "doc": "u1_北京化工大学票据粘贴模版.pdf",
+    "question": "报销票据的真实性和合法性由谁负责？",
+    "goldKeywords": ["合法票据", "项目负责人", "真实合法性"],
+    "minKeywordHits": 2,
+    "type": "fact"
+  }
+]

@@ -40,8 +40,6 @@ public class UserService {
             return "密码必须包含英文、数字、特殊字符，长度至少6位";
         }
 
-        // 👉 TODO：这里以后要换成 BCrypt 加密
-        //user.setPassword(user.getPassword());
 
         // 改了：加密密码
         user.setPassword(passwordEncoder.encode(user.getPassword()));
@@ -58,12 +56,6 @@ public class UserService {
         if (userOpt.isEmpty()) return null;
 
         User user = userOpt.get();
-        /*
-        👉 TODO：后续替换为 BCrypt 对比
-        if (!user.getPassword().equals(password)) {
-            return null;
-        }
-         */
 
         // ✅ 使用 matches 方法比对明文密码和数据库的密文
         if (!passwordEncoder.matches(password, user.getPassword())) {
@@ -87,7 +79,6 @@ public class UserService {
         }
 
         User u = user.get();
-        //u.setPassword(newPassword);  // TODO: 这里未来改为加密
         // ✅ 加密新密码
         u.setPassword(passwordEncoder.encode(newPassword));
         userRepo.save(u);

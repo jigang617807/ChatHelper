@@ -30,6 +30,8 @@
 
         <div class="input-area">
             <textarea id="msg" placeholder="请输入你的问题..." onkeydown="if(event.keyCode===13 && !event.shiftKey) { event.preventDefault(); sendMsg(); }"></textarea>
+            <input id="imageInput" type="file" accept="image/*" style="display:none">
+            <button class="btn btn-secondary" onclick="document.getElementById('imageInput').click()">图片</button>
             <button class="btn" onclick="sendMsg()">发送</button>
         </div>
 
@@ -74,6 +76,11 @@
     });
 
     let evtSource = null;
+    let selectedImageFile = null;
+
+    document.getElementById("imageInput").addEventListener("change", function () {
+        selectedImageFile = this.files && this.files.length > 0 ? this.files[0] : null;
+    });
 
     function handleEnter(event) {
         if (event.keyCode === 13 && !event.shiftKey) {
@@ -83,20 +90,52 @@
     }
     document.getElementById("msg").addEventListener("keydown", handleEnter);
 
-    function sendMsg() {
+    async function uploadImageContext() {
+        if (!selectedImageFile) return null;
+        const formData = new FormData();
+        formData.append("file", selectedImageFile);
+        const response = await fetch("/chat/image-context", { method: "POST", body: formData });
+        if (!response.ok) {
+            const message = await response.text();
+            throw new Error(message || "图片上传失败");
+        }
+        return await response.json();
+    }
+
+    async function sendMsg() {
         const text = document.getElementById("msg").value.trim();
-        if (!text) return;
+        if (!text && !selectedImageFile) return;
 
         const convId = document.getElementById("convId").value;
         const docId  = document.getElementById("docId").value;
         const box    = document.getElementById("chatBox");
+        let imageContext = null;
+        try {
+            imageContext = await uploadImageContext();
+        } catch (err) {
+            alert(err.message || "图片上传失败");
+            return;
+        }
 
         const userDiv = document.createElement("div");
         userDiv.className = "msg user-msg";
-        userDiv.innerHTML = `<div class="bubble user-bubble">${text}</div>`;
+        userDiv.innerHTML = `<div class="bubble user-bubble"></div>`;
+        const userBubble = userDiv.querySelector(".bubble");
+        userBubble.textContent = text || "请分析这张图片";
+        if (imageContext && imageContext.webPath) {
+            const img = document.createElement("img");
+            img.src = imageContext.webPath;
+            img.alt = "用户上传图片";
+            img.style.maxWidth = "220px";
+            img.style.display = "block";
+            img.style.marginTop = "8px";
+            userBubble.appendChild(img);
+        }
         box.appendChild(userDiv);
 
         document.getElementById("msg").value = "";
+        document.getElementById("imageInput").value = "";
+        selectedImageFile = null;
 
         const aiDiv = document.createElement("div");
         aiDiv.className = "msg ai-msg";
@@ -111,7 +150,11 @@
 
         if (evtSource) evtSource.close();
 
-        const url = `/chat/ask?conversationId=${convId}&documentId=${docId}&question=${encodeURIComponent(text)}`;
+        const question = text || "请结合我上传的图片进行分析。";
+        let url = `/chat/ask?conversationId=${convId}&documentId=${docId}&question=${encodeURIComponent(question)}`;
+        if (imageContext && imageContext.id) {
+            url += `&imageContextId=${encodeURIComponent(imageContext.id)}`;
+        }
         evtSource = new EventSourcePolyfill(url);
 
         let full = "";

@@ -5,6 +5,8 @@ import com.example.demo.entity.Conversation;
 import com.example.demo.repository.ChatMessageRepository;
 import com.example.demo.repository.ConversationRepository;
 import com.example.demo.repository.DocumentRepository;
+import com.example.demo.service.ImageQuestionContext;
+import com.example.demo.service.ImageQuestionContextService;
 import com.example.demo.service.RagCachedRetrievalService;
 import com.example.demo.service.RagSearchResult;
 import com.example.demo.service.SpringAiService;
@@ -19,9 +21,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.Map;
 
 @Controller
 @RequestMapping("/chat")
@@ -33,6 +37,7 @@ public class ChatController {
     private final RagCachedRetrievalService ragCachedRetrievalService;
     private final DocumentRepository documentRepository;
     private final SpringAiService springAiService;
+    private final ImageQuestionContextService imageQuestionContextService;
 
     @GetMapping("/start")
     public String start(@RequestParam Long docId, HttpSession session, Model model) {
@@ -84,6 +89,7 @@ public class ChatController {
     public Flux<String> ask(@RequestParam Long conversationId,
                             @RequestParam Long documentId,
                             @RequestParam String question,
+                            @RequestParam(required = false) String imageContextId,
                             HttpSession session) {
 
         Long uid = (Long) session.getAttribute("uid");
@@ -96,11 +102,18 @@ public class ChatController {
             return Flux.just("【错误】无权访问该文档", "[DONE]");
         }
 
-        RagSearchResult searchResult = ragCachedRetrievalService.search(uid, documentId, question);
+        ImageQuestionContext imageContext = imageQuestionContextService.find(uid, imageContextId);
+        String imagePromptContext = imageQuestionContextService.buildPromptContext(imageContext);
+        String effectiveQuestion = imageContext == null
+                ? question
+                : question + "\n\n[图片输入]\n" + imageContext.description();
+
+        RagSearchResult searchResult = ragCachedRetrievalService.search(uid, documentId, effectiveQuestion);
         String ragPrompt = """
                 你是企业文档知识库助手。请严格基于“检索证据”回答用户问题，不要编造证据外的信息。
                 如果证据不足，请明确说明“当前文档证据不足”，并给出还需要补充哪些信息。
                 回答中的关键结论后请尽量标注引用编号，例如 [S1]、[S2]。
+                %s
 
                 检索证据：
                 %s
@@ -112,13 +125,13 @@ public class ChatController {
                 1. 使用简体中文。
                 2. 先直接回答，再补充依据。
                 3. 不要输出没有证据支撑的确定性结论。
-                """.formatted(searchResult.buildPromptContext(), question);
+                """.formatted(imagePromptContext, searchResult.buildPromptContext(), question);
         List<ChatMessage> history = msgRepo.findByConversationIdOrderByIdAsc(conversationId);
 
         ChatMessage user = new ChatMessage();
         user.setConversationId(conversationId);
         user.setRole("user");
-        user.setMessage(question);
+        user.setMessage(imageContext == null ? question : question + "\n\n![用户上传图片](" + imageContext.webPath() + ")");
         msgRepo.save(user);
 
         StringBuilder finalReply = new StringBuilder();
@@ -148,5 +161,24 @@ public class ChatController {
                     sink.complete();
                 }
         ));
+    }
+
+    @PostMapping("/image-context")
+    @ResponseBody
+    public ResponseEntity<?> uploadImageContext(@RequestParam("file") MultipartFile file, HttpSession session) {
+        Long uid = (Long) session.getAttribute("uid");
+        if (uid == null) {
+            return ResponseEntity.status(401).body("用户未登录或会话已过期");
+        }
+        try {
+            ImageQuestionContext context = imageQuestionContextService.save(uid, file);
+            return ResponseEntity.ok(Map.of(
+                    "id", context.id(),
+                    "webPath", context.webPath(),
+                    "description", context.description()
+            ));
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        }
     }
 }

@@ -59,6 +59,12 @@ public class RagSearchResult {
                     .append(item.getId())
                     .append(", chunkIndex=")
                     .append(item.getChunkIndex() == null ? "unknown" : item.getChunkIndex())
+                    .append(", page=")
+                    .append(item.getPageNumber() == null ? "unknown" : item.getPageNumber())
+                    .append(", type=")
+                    .append(blankToDefault(item.getContentType(), "TEXT"))
+                    .append(", section=")
+                    .append(blankToDefault(item.getSectionTitle(), "-"))
                     .append(", source=")
                     .append(item.getSourceType())
                     .append(", relevance=")
@@ -92,16 +98,32 @@ public class RagSearchResult {
                     .append(item.getId())
                     .append(", chunkIndex=")
                     .append(item.getChunkIndex() == null ? "unknown" : item.getChunkIndex())
+                    .append(", page=")
+                    .append(item.getPageNumber() == null ? "unknown" : item.getPageNumber())
+                    .append(", type=")
+                    .append(blankToDefault(item.getContentType(), "TEXT"))
+                    .append(", section=")
+                    .append(blankToDefault(item.getSectionTitle(), "-"))
                     .append(", source=")
                     .append(item.getSourceType())
                     .append(", relevance=")
                     .append(format(item.getConfidence()))
                     .append("\n");
+            if (item.getSourcePath() != null && !item.getSourcePath().isBlank()) {
+                builder.append("  - sourcePath: ").append(item.getSourcePath()).append("\n");
+                if (item.getSourcePath().startsWith("/uploads/")) {
+                    builder.append("  - ![source](").append(item.getSourcePath()).append(")\n");
+                }
+            }
         }
         return builder.toString();
     }
 
     private String format(double value) {
         return String.format(Locale.ROOT, "%.2f", value);
+    }
+
+    private String blankToDefault(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value;
     }
 }

@@ -71,6 +71,8 @@
                 <textarea id="agentInput"
                           placeholder="把任务交给 AI 超级智能体..."
                           onkeydown="if(event.keyCode===13 && !event.shiftKey) { event.preventDefault(); sendAgentMessage(); }"></textarea>
+                <input id="agentImageInput" type="file" accept="image/*" style="display:none">
+                <button class="btn btn-secondary" onclick="document.getElementById('agentImageInput').click()">图片</button>
                 <button class="btn" onclick="sendAgentMessage()">发送</button>
             </div>
         </main>
@@ -101,6 +103,7 @@
 <script>
     marked.setOptions({ gfm: true, breaks: true });
     let agentEventSource = null;
+    let selectedAgentImageFile = null;
 
     document.addEventListener("DOMContentLoaded", function () {
         document.querySelectorAll(".markdown-content").forEach(el => {
@@ -114,10 +117,34 @@
         document.getElementById("agentInput").focus();
     }
 
-    function sendAgentMessage() {
+    document.getElementById("agentImageInput").addEventListener("change", function () {
+        selectedAgentImageFile = this.files && this.files.length > 0 ? this.files[0] : null;
+    });
+
+    async function uploadAgentImageContext() {
+        if (!selectedAgentImageFile) return null;
+        const formData = new FormData();
+        formData.append("file", selectedAgentImageFile);
+        const response = await fetch("/agent/image-context", { method: "POST", body: formData });
+        if (!response.ok) {
+            const message = await response.text();
+            throw new Error(message || "图片上传失败");
+        }
+        return await response.json();
+    }
+
+    async function sendAgentMessage() {
         const input = document.getElementById("agentInput");
         const text = input.value.trim();
-        if (!text) return;
+        if (!text && !selectedAgentImageFile) return;
+
+        let imageContext = null;
+        try {
+            imageContext = await uploadAgentImageContext();
+        } catch (err) {
+            alert(err.message || "图片上传失败");
+            return;
+        }
 
         const box = document.getElementById("agentChatBox");
         const emptyTip = box.querySelector(".empty-tip");
@@ -126,7 +153,17 @@
         const userDiv = document.createElement("div");
         userDiv.className = "msg user-msg";
         userDiv.innerHTML = `<div class="bubble user-bubble"></div>`;
-        userDiv.querySelector(".bubble").textContent = text;
+        const userBubble = userDiv.querySelector(".bubble");
+        userBubble.textContent = text || "请分析这张图片";
+        if (imageContext && imageContext.webPath) {
+            const img = document.createElement("img");
+            img.src = imageContext.webPath;
+            img.alt = "用户上传图片";
+            img.style.maxWidth = "220px";
+            img.style.display = "block";
+            img.style.marginTop = "8px";
+            userBubble.appendChild(img);
+        }
         box.appendChild(userDiv);
 
         const aiDiv = document.createElement("div");
@@ -138,12 +175,18 @@
         box.appendChild(aiDiv);
 
         input.value = "";
+        document.getElementById("agentImageInput").value = "";
+        selectedAgentImageFile = null;
         scrollChatToBottom();
 
         if (agentEventSource) agentEventSource.close();
 
         const sessionId = document.getElementById("agentSessionId").value;
-        const url = `/agent/ask?sessionId=${sessionId}&question=${encodeURIComponent(text)}`;
+        const question = text || "请结合我上传的图片进行分析。";
+        let url = `/agent/ask?sessionId=${sessionId}&question=${encodeURIComponent(question)}`;
+        if (imageContext && imageContext.id) {
+            url += `&imageContextId=${encodeURIComponent(imageContext.id)}`;
+        }
         agentEventSource = new EventSourcePolyfill(url);
         let full = "";
 

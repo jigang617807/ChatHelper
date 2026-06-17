@@ -22,19 +22,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class RagService {
 
     private static final Logger log = LoggerFactory.getLogger(RagService.class);
-    private static final int MIN_CJK_NGRAM = 2;
-    private static final int MAX_CJK_NGRAM = 4;
 
     private final DocumentChunkRepository chunkRepo;
     private final ElasticsearchOperations elasticsearchOperations;
@@ -85,10 +80,10 @@ public class RagService {
                 : rrfFuse(vectorHits, bm25Hits, rrfK);
 
         if (rerankEnabled) {
-            fused = lightweightRerank(fused, question);
+            fused = lightweightRerank(fused);
         }
 
-        List<RagChunkEvidence> evidence = buildEvidence(question, fused.stream()
+        List<RagChunkEvidence> evidence = buildEvidence(fused.stream()
                 .limit(Math.max(1, finalTopK))
                 .toList());
         return buildSearchResult(question, evidence);
@@ -104,7 +99,9 @@ public class RagService {
             DocumentChunkVectorHitProjection row = rows.get(i);
             double distance = row.getDistance() == null ? 1.0 : row.getDistance();
             double score = 1.0 / (1.0 + Math.max(0.0, distance));
-            hits.add(RankedChunk.vector(row.getId(), row.getText(), row.getChunkIndex(), score, i + 1));
+            hits.add(RankedChunk.vector(row.getId(), row.getText(), row.getChunkIndex(),
+                    row.getPageNumber(), row.getSectionTitle(), row.getContentType(), row.getSourcePath(),
+                    score, i + 1));
         }
         return hits;
     }
@@ -132,7 +129,9 @@ public class RagService {
                 if (chunkId == null) {
                     continue;
                 }
-                hits.add(RankedChunk.bm25(chunkId, content.getText(), content.getChunkIndex(), hit.getScore(), rank++));
+                hits.add(RankedChunk.bm25(chunkId, content.getText(), content.getChunkIndex(),
+                        content.getPageNumber(), content.getSectionTitle(), content.getContentType(), content.getSourcePath(),
+                        hit.getScore(), rank++));
             }
             return hits;
         } catch (Exception ex) {
@@ -188,7 +187,7 @@ public class RagService {
         return result;
     }
 
-    private List<RankedChunk> lightweightRerank(List<RankedChunk> fused, String question) {
+    private List<RankedChunk> lightweightRerank(List<RankedChunk> fused) {
         if (fused.isEmpty()) {
             return fused;
         }
@@ -200,15 +199,13 @@ public class RagService {
         return fused.stream()
                 .map(hit -> {
                     double normalizedRetrieval = hit.score() / safeMax;
-                    double lexical = lexicalOverlap(question, hit.text());
-                    double rerankScore = 0.75 * normalizedRetrieval + 0.25 * lexical;
-                    return hit.withScore(rerankScore);
+                    return hit.withScore(normalizedRetrieval);
                 })
                 .sorted(Comparator.comparingDouble(RankedChunk::score).reversed())
                 .toList();
     }
 
-    private List<RagChunkEvidence> buildEvidence(String question, List<RankedChunk> rankedChunks) {
+    private List<RagChunkEvidence> buildEvidence(List<RankedChunk> rankedChunks) {
         if (rankedChunks.isEmpty()) {
             return List.of();
         }
@@ -221,13 +218,16 @@ public class RagService {
         for (int i = 0; i < rankedChunks.size(); i++) {
             RankedChunk hit = rankedChunks.get(i);
             double normalizedScore = hit.score() / safeMax;
-            double lexical = lexicalOverlap(question, hit.text());
             double absoluteSignal = Math.max(hit.vectorScore(), Math.min(hit.bm25Score() / 10.0, 1.0));
-            double confidence = clamp(0.45 * normalizedScore + 0.35 * lexical + 0.20 * absoluteSignal);
+            double confidence = clamp(0.70 * normalizedScore + 0.30 * absoluteSignal);
             evidence.add(new RagChunkEvidence(
                     hit.chunkId(),
                     hit.text(),
                     hit.chunkIndex(),
+                    hit.pageNumber(),
+                    hit.sectionTitle(),
+                    hit.contentType(),
+                    hit.sourcePath(),
                     "S" + (i + 1),
                     hit.sourceType().name(),
                     hit.score(),
@@ -254,77 +254,8 @@ public class RagService {
         double enoughEvidence = Math.min(evidence.size() / 3.0, 1.0);
         double confidence = clamp(0.55 * top + 0.35 * avgTop3 + 0.10 * enoughEvidence);
         String level = confidence >= 0.72 ? "高" : confidence >= 0.45 ? "中" : "低";
-        String reason = "基于Top证据相关度、前三条平均相关度和证据数量综合计算；该值用于提示检索可靠性，不等同于事实正确率。";
+        String reason = "基于融合检索分数、Top证据相关度和证据数量综合计算；该值用于提示检索可靠性，不等同于事实正确率。";
         return new RagSearchResult(question, evidence, confidence, level, reason);
-    }
-
-    private double lexicalOverlap(String question, String text) {
-        Set<String> queryTokens = tokens(question);
-        if (queryTokens.isEmpty() || text == null || text.isBlank()) {
-            return 0.0;
-        }
-        Set<String> textTokens = tokens(text);
-        if (textTokens.isEmpty()) {
-            return 0.0;
-        }
-        int matched = 0;
-        for (String token : queryTokens) {
-            if (textTokens.contains(token)) {
-                matched++;
-            }
-        }
-        return clamp((double) matched / queryTokens.size());
-    }
-
-    private Set<String> tokens(String text) {
-        if (text == null || text.isBlank()) {
-            return Set.of();
-        }
-        Set<String> tokens = new LinkedHashSet<>();
-        String lower = text.toLowerCase(Locale.ROOT);
-        StringBuilder current = new StringBuilder();
-        StringBuilder cjkRun = new StringBuilder();
-        for (int offset = 0; offset < lower.length(); ) {
-            int codePoint = lower.codePointAt(offset);
-            if (Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN) {
-                flushToken(tokens, current);
-                cjkRun.appendCodePoint(codePoint);
-            } else if (Character.isLetterOrDigit(codePoint)) {
-                flushCjkTokens(tokens, cjkRun);
-                current.appendCodePoint(codePoint);
-            } else {
-                flushToken(tokens, current);
-                flushCjkTokens(tokens, cjkRun);
-            }
-            offset += Character.charCount(codePoint);
-        }
-        flushToken(tokens, current);
-        flushCjkTokens(tokens, cjkRun);
-        return tokens;
-    }
-
-    private void flushCjkTokens(Set<String> tokens, StringBuilder cjkRun) {
-        if (cjkRun.isEmpty()) {
-            return;
-        }
-        String value = cjkRun.toString();
-        int[] codePoints = value.codePoints().toArray();
-        for (int n = MIN_CJK_NGRAM; n <= MAX_CJK_NGRAM; n++) {
-            if (codePoints.length < n) {
-                break;
-            }
-            for (int start = 0; start <= codePoints.length - n; start++) {
-                tokens.add(new String(codePoints, start, n));
-            }
-        }
-        cjkRun.setLength(0);
-    }
-
-    private void flushToken(Set<String> tokens, StringBuilder current) {
-        if (current.length() >= 2) {
-            tokens.add(current.toString());
-        }
-        current.setLength(0);
     }
 
     private double clamp(double value) {
@@ -340,6 +271,10 @@ public class RagService {
     private record RankedChunk(Long chunkId,
                                String text,
                                Integer chunkIndex,
+                               Integer pageNumber,
+                               String sectionTitle,
+                               String contentType,
+                               String sourcePath,
                                double score,
                                int rank,
                                SourceType sourceType,
@@ -348,22 +283,33 @@ public class RagService {
                                Integer vectorRank,
                                Integer bm25Rank) {
 
-        private static RankedChunk vector(Long chunkId, String text, Integer chunkIndex, double score, int rank) {
-            return new RankedChunk(chunkId, text, chunkIndex, score, rank, SourceType.VECTOR, score, 0.0, rank, null);
+        private static RankedChunk vector(Long chunkId, String text, Integer chunkIndex,
+                                          Integer pageNumber, String sectionTitle, String contentType, String sourcePath,
+                                          double score, int rank) {
+            return new RankedChunk(chunkId, text, chunkIndex, pageNumber, sectionTitle, contentType, sourcePath,
+                    score, rank, SourceType.VECTOR, score, 0.0, rank, null);
         }
 
-        private static RankedChunk bm25(Long chunkId, String text, Integer chunkIndex, double score, int rank) {
-            return new RankedChunk(chunkId, text, chunkIndex, score, rank, SourceType.BM25, 0.0, score, null, rank);
+        private static RankedChunk bm25(Long chunkId, String text, Integer chunkIndex,
+                                        Integer pageNumber, String sectionTitle, String contentType, String sourcePath,
+                                        double score, int rank) {
+            return new RankedChunk(chunkId, text, chunkIndex, pageNumber, sectionTitle, contentType, sourcePath,
+                    score, rank, SourceType.BM25, 0.0, score, null, rank);
         }
 
         private RankedChunk withScore(double newScore) {
-            return new RankedChunk(chunkId, text, chunkIndex, newScore, rank, sourceType, vectorScore, bm25Score, vectorRank, bm25Rank);
+            return new RankedChunk(chunkId, text, chunkIndex, pageNumber, sectionTitle, contentType, sourcePath,
+                    newScore, rank, sourceType, vectorScore, bm25Score, vectorRank, bm25Rank);
         }
     }
 
     private record FusionAccumulator(Long chunkId,
                                      String text,
                                      Integer chunkIndex,
+                                     Integer pageNumber,
+                                     String sectionTitle,
+                                     String contentType,
+                                     String sourcePath,
                                      double score,
                                      double vectorScore,
                                      double bm25Score,
@@ -375,6 +321,10 @@ public class RagService {
                     hit.chunkId(),
                     hit.text(),
                     hit.chunkIndex(),
+                    hit.pageNumber(),
+                    hit.sectionTitle(),
+                    hit.contentType(),
+                    hit.sourcePath(),
                     initScore,
                     hit.vectorScore(),
                     hit.bm25Score(),
@@ -386,6 +336,10 @@ public class RagService {
         private FusionAccumulator merge(double addScore, RankedChunk fallback) {
             String candidateText = (this.text == null || this.text.isBlank()) ? fallback.text() : this.text;
             Integer candidateIndex = this.chunkIndex == null ? fallback.chunkIndex() : this.chunkIndex;
+            Integer candidatePage = this.pageNumber == null ? fallback.pageNumber() : this.pageNumber;
+            String candidateSection = (this.sectionTitle == null || this.sectionTitle.isBlank()) ? fallback.sectionTitle() : this.sectionTitle;
+            String candidateContentType = (this.contentType == null || this.contentType.isBlank()) ? fallback.contentType() : this.contentType;
+            String candidateSourcePath = (this.sourcePath == null || this.sourcePath.isBlank()) ? fallback.sourcePath() : this.sourcePath;
             double nextVectorScore = Math.max(this.vectorScore, fallback.vectorScore());
             double nextBm25Score = Math.max(this.bm25Score, fallback.bm25Score());
             Integer nextVectorRank = this.vectorRank == null ? fallback.vectorRank() : minRank(this.vectorRank, fallback.vectorRank());
@@ -394,6 +348,10 @@ public class RagService {
                     this.chunkId,
                     candidateText,
                     candidateIndex,
+                    candidatePage,
+                    candidateSection,
+                    candidateContentType,
+                    candidateSourcePath,
                     this.score + addScore,
                     nextVectorScore,
                     nextBm25Score,
@@ -406,7 +364,8 @@ public class RagService {
             SourceType sourceType = vectorScore > 0 && bm25Score > 0
                     ? SourceType.HYBRID
                     : vectorScore > 0 ? SourceType.VECTOR : SourceType.BM25;
-            return new RankedChunk(chunkId, text, chunkIndex, score, rank, sourceType,
+            return new RankedChunk(chunkId, text, chunkIndex, pageNumber, sectionTitle, contentType, sourcePath,
+                    score, rank, sourceType,
                     vectorScore, bm25Score, vectorRank, bm25Rank);
         }
 

@@ -94,6 +94,8 @@ upload:
   root: uploads/
   avatar: uploads/avatar/
   docs: uploads/docs/
+  doc-media: uploads/doc-media/
+  question-images: uploads/question-images/
 
 rag:
   cache:
@@ -103,7 +105,7 @@ rag:
   retrieval:
     vector-topk: ${RAG_VECTOR_TOPK:20}
     bm25-topk: ${RAG_BM25_TOPK:20}
-    final-topk: ${RAG_FINAL_TOPK:5}
+    final-topk: ${RAG_FINAL_TOPK:10}
     fusion:
       strategy: ${RAG_FUSION_STRATEGY:rrf}
       rrf-k: ${RAG_FUSION_RRF_K:60}
@@ -113,6 +115,16 @@ rag:
       enabled: ${RAG_RERANK_ENABLED:true}
 
 document:
+  parsing:
+#    strategy: ${DOCUMENT_PARSING_STRATEGY:structured}
+    strategy: simple
+  multimodal:
+    render-ocr-pages: ${DOCUMENT_MULTIMODAL_RENDER_OCR_PAGES:true}
+    page-image-dpi: ${DOCUMENT_MULTIMODAL_PAGE_IMAGE_DPI:120}
+    extract-inline-images: ${DOCUMENT_MULTIMODAL_EXTRACT_INLINE_IMAGES:true}
+    min-image-width: ${DOCUMENT_MULTIMODAL_MIN_IMAGE_WIDTH:80}
+    min-image-height: ${DOCUMENT_MULTIMODAL_MIN_IMAGE_HEIGHT:80}
+    max-images-per-page: ${DOCUMENT_MULTIMODAL_MAX_IMAGES_PER_PAGE:20}
   processing:
     max-retries: ${DOCUMENT_PROCESSING_MAX_RETRIES:3}
     retry-delay-ms: ${DOCUMENT_PROCESSING_RETRY_DELAY_MS:30000}
@@ -120,3 +132,13 @@ document:
     recovery-enabled: ${DOCUMENT_PROCESSING_RECOVERY_ENABLED:true}
     recovery-interval-ms: ${DOCUMENT_PROCESSING_RECOVERY_INTERVAL_MS:60000}
     recovery-batch-size: ${DOCUMENT_PROCESSING_RECOVERY_BATCH_SIZE:20}
+
+ocr:
+  enabled: true
+  provider: ${OCR_PROVIDER:baidu}
+  baidu:
+    api-key: ${BAIDU_OCR_API_KEY:}
+    secret-key: ${BAIDU_OCR_SECRET_KEY:}
+    token-url: ${BAIDU_OCR_TOKEN_URL:https://aip.baidubce.com/oauth/2.0/token}
+    endpoint: ${BAIDU_OCR_ENDPOINT:https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic}
+    timeout-seconds: ${BAIDU_OCR_TIMEOUT_SECONDS:20}

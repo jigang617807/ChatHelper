@@ -7,6 +7,10 @@ public class RagChunkEvidence implements DocumentChunkCacheProjection {
     private final Long id;
     private final String text;
     private final Integer chunkIndex;
+    private final Integer pageNumber;
+    private final String sectionTitle;
+    private final String contentType;
+    private final String sourcePath;
     private final String citationId;
     private final String sourceType;
     private final double score;
@@ -19,6 +23,10 @@ public class RagChunkEvidence implements DocumentChunkCacheProjection {
     public RagChunkEvidence(Long id,
                             String text,
                             Integer chunkIndex,
+                            Integer pageNumber,
+                            String sectionTitle,
+                            String contentType,
+                            String sourcePath,
                             String citationId,
                             String sourceType,
                             double score,
@@ -30,6 +38,10 @@ public class RagChunkEvidence implements DocumentChunkCacheProjection {
         this.id = id;
         this.text = text;
         this.chunkIndex = chunkIndex;
+        this.pageNumber = pageNumber;
+        this.sectionTitle = sectionTitle;
+        this.contentType = contentType;
+        this.sourcePath = sourcePath;
         this.citationId = citationId;
         this.sourceType = sourceType;
         this.score = score;
@@ -53,6 +65,26 @@ public class RagChunkEvidence implements DocumentChunkCacheProjection {
     @Override
     public Integer getChunkIndex() {
         return chunkIndex;
+    }
+
+    @Override
+    public Integer getPageNumber() {
+        return pageNumber;
+    }
+
+    @Override
+    public String getSectionTitle() {
+        return sectionTitle;
+    }
+
+    @Override
+    public String getContentType() {
+        return contentType;
+    }
+
+    @Override
+    public String getSourcePath() {
+        return sourcePath;
     }
 
     public String getCitationId() {

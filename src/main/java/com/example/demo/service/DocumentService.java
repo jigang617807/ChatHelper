@@ -1,6 +1,7 @@
 package com.example.demo.service;
 
 import com.example.demo.config.RabbitConfig;
+import com.example.demo.entity.ChunkContentType;
 import com.example.demo.entity.Conversation;
 import com.example.demo.entity.DocStatus;
 import com.example.demo.entity.Document;
@@ -11,21 +12,22 @@ import com.example.demo.repository.DocumentChunkRepository;
 import com.example.demo.repository.DocumentRepository;
 import com.example.demo.search.ChunkSearchDoc;
 import com.example.demo.search.ChunkSearchRepository;
-import com.example.demo.utils.TextSplitter;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -42,9 +44,17 @@ public class DocumentService {
     private final ConversationRepository conversationRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final DocumentRepository documentRepository;
+    private final DocumentParsingService documentParsingService;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${document.processing.stale-processing-minutes:30}")
     private long staleProcessingMinutes;
+
+    @Value("${upload.dir:.}")
+    private String uploadDir;
+
+    @Value("${upload.doc-media:uploads/doc-media/}")
+    private String docMediaDir;
 
     public Document saveDocument(Long userId, String title, String filePath) {
         Document doc = new Document();
@@ -76,12 +86,10 @@ public class DocumentService {
         );
     }
 
-    @Transactional(dontRollbackOn = DocumentProcessingException.class)
     public void processDocumentAsync(Long docId) {
         processDocumentAsync(docId, false);
     }
 
-    @Transactional(dontRollbackOn = DocumentProcessingException.class)
     public void processDocumentAsync(Long docId, boolean redelivered) {
         Document before = docRepo.findById(docId)
                 .orElseThrow(() -> new NonRetryableDocumentProcessingException("Document does not exist. id=" + docId));
@@ -94,20 +102,12 @@ public class DocumentService {
         }
 
         List<DocStatus> allowedStatuses = allowedStatuses(before, redelivered);
-        int locked = docRepo.markProcessing(docId, allowedStatuses, DocStatus.PROCESSING, LocalDateTime.now());
-        if (locked == 0) {
+        if (!markProcessingCommitted(docId, allowedStatuses)) {
             return;
         }
 
-        Document doc = docRepo.findById(docId)
-                .orElseThrow(() -> new NonRetryableDocumentProcessingException("Document does not exist. id=" + docId));
-
         try {
-            rebuildIndexes(doc);
-            doc.setStatus(DocStatus.COMPLETED);
-            doc.setErrorMessage(null);
-            doc.setProcessedAt(LocalDateTime.now());
-            docRepo.save(doc);
+            processDocumentBodyCommitted(docId);
         } catch (NonRetryableDocumentProcessingException ex) {
             markFailed(docId, ex.getMessage());
             throw ex;
@@ -115,6 +115,25 @@ public class DocumentService {
             markRetryableFailure(docId, ex.getMessage());
             throw new RetryableDocumentProcessingException("Retryable document processing failure. docId=" + docId, ex);
         }
+    }
+
+    private void processDocumentBodyCommitted(Long docId) {
+        transactionTemplate.executeWithoutResult(status -> {
+            Document doc = docRepo.findById(docId)
+                    .orElseThrow(() -> new NonRetryableDocumentProcessingException("Document does not exist. id=" + docId));
+            rebuildIndexes(doc);
+            doc.setStatus(DocStatus.COMPLETED);
+            doc.setErrorMessage(null);
+            doc.setProcessedAt(LocalDateTime.now());
+            docRepo.save(doc);
+        });
+    }
+
+    private boolean markProcessingCommitted(Long docId, List<DocStatus> allowedStatuses) {
+        Boolean locked = transactionTemplate.execute(status ->
+                docRepo.markProcessing(docId, allowedStatuses, DocStatus.PROCESSING, LocalDateTime.now()) > 0
+        );
+        return Boolean.TRUE.equals(locked);
     }
 
     private void rebuildIndexes(Document doc) {
@@ -126,25 +145,15 @@ public class DocumentService {
             throw new NonRetryableDocumentProcessingException("PDF file does not exist: " + file.getAbsolutePath());
         }
 
-        String text = extractPdfText(file);
-        if (text == null || text.isBlank()) {
-            throw new NonRetryableDocumentProcessingException("PDF text is empty. docId=" + docId);
-        }
+        Path mediaDir = Path.of(new File(uploadDir).getAbsolutePath(), docMediaDir, "doc-" + docId);
+        String mediaWebPrefix = "/" + docMediaDir.replace("\\", "/") + "doc-" + docId + "/";
+        ParsedDocument parsedDocument = documentParsingService.parsePdf(file, mediaDir, mediaWebPrefix);
+        String text = parsedDocument.fullText();
 
         doc.setContent(text);
         docRepo.save(doc);
 
-        List<String> chunks = TextSplitter.splitText(text, 800, 200);
-        saveChunks(docId, chunks);
-    }
-
-    private String extractPdfText(File file) {
-        try (PDDocument pdf = PDDocument.load(file)) {
-            PDFTextStripper stripper = new PDFTextStripper();
-            return stripper.getText(pdf);
-        } catch (Exception ex) {
-            throw new NonRetryableDocumentProcessingException("PDF parse failed: " + ex.getMessage(), ex);
-        }
+        saveChunks(docId, parsedDocument.chunks());
     }
 
     private void cleanupDocumentIndexes(Long userId, Long docId) {
@@ -153,9 +162,10 @@ public class DocumentService {
         ragRetrievalCacheService.evictDocument(userId, docId);
     }
 
-    public void saveChunks(Long docId, List<String> chunks) {
+    public void saveChunks(Long docId, List<ParsedChunk> chunks) {
         int index = 0;
-        for (String text : chunks) {
+        for (ParsedChunk parsedChunk : chunks) {
+            String text = parsedChunk == null ? null : parsedChunk.text();
             if (text == null || text.strip().isEmpty()) {
                 continue;
             }
@@ -164,6 +174,11 @@ public class DocumentService {
             DocumentChunk chunk = new DocumentChunk();
             chunk.setDocumentId(docId);
             chunk.setChunkIndex(chunkIndex);
+            chunk.setPageNumber(parsedChunk.pageNumber());
+            chunk.setSectionTitle(parsedChunk.sectionTitle());
+            chunk.setContentType(parsedChunk.contentType() == null ? ChunkContentType.TEXT.name() : parsedChunk.contentType().name());
+            chunk.setSourcePath(parsedChunk.sourcePath());
+            chunk.setMetadata(parsedChunk.metadata());
             chunk.setText(text);
             chunk = chunkRepo.save(chunk);
 
@@ -176,6 +191,10 @@ public class DocumentService {
             searchDoc.setChunkId(chunk.getId());
             searchDoc.setDocumentId(docId);
             searchDoc.setChunkIndex(chunkIndex);
+            searchDoc.setPageNumber(chunk.getPageNumber());
+            searchDoc.setSectionTitle(chunk.getSectionTitle());
+            searchDoc.setContentType(chunk.getContentType() == null ? ChunkContentType.TEXT.name() : chunk.getContentType());
+            searchDoc.setSourcePath(chunk.getSourcePath());
             searchDoc.setText(chunk.getText());
             searchDoc.setUpdatedAt(Instant.now());
             chunkSearchRepository.save(searchDoc);
@@ -187,20 +206,24 @@ public class DocumentService {
     }
 
     public void markRetryableFailure(Long docId, String message) {
-        docRepo.findById(docId).ifPresent(doc -> {
-            doc.setStatus(DocStatus.FAILED_RETRYABLE);
-            doc.setRetryCount(nullToZero(doc.getRetryCount()) + 1);
-            doc.setErrorMessage(limitMessage(message));
-            docRepo.save(doc);
+        transactionTemplate.executeWithoutResult(status -> {
+            docRepo.findById(docId).ifPresent(doc -> {
+                doc.setStatus(DocStatus.FAILED_RETRYABLE);
+                doc.setRetryCount(nullToZero(doc.getRetryCount()) + 1);
+                doc.setErrorMessage(limitMessage(message));
+                docRepo.save(doc);
+            });
         });
     }
 
     public void markFailed(Long docId, String message) {
-        docRepo.findById(docId).ifPresent(doc -> {
-            doc.setStatus(DocStatus.FAILED);
-            doc.setErrorMessage(limitMessage(message));
-            doc.setProcessedAt(LocalDateTime.now());
-            docRepo.save(doc);
+        transactionTemplate.executeWithoutResult(status -> {
+            docRepo.findById(docId).ifPresent(doc -> {
+                doc.setStatus(DocStatus.FAILED);
+                doc.setErrorMessage(limitMessage(message));
+                doc.setProcessedAt(LocalDateTime.now());
+                docRepo.save(doc);
+            });
         });
     }
 
@@ -217,6 +240,7 @@ public class DocumentService {
         cleanupDocumentIndexes(userId, docId);
         documentRepository.delete(document);
         deleteLocalDocumentFile(filePath);
+        deleteDocumentMediaDirectory(docId);
     }
 
     private void deleteConversation(String title) {
@@ -236,6 +260,31 @@ public class DocumentService {
         File file = new File(filePath);
         if (file.exists() && !file.delete()) {
             System.err.println("Failed to delete local document file: " + file.getAbsolutePath());
+        }
+    }
+
+    private void deleteDocumentMediaDirectory(Long docId) {
+        if (docId == null) {
+            return;
+        }
+        try {
+            Path mediaRoot = Path.of(new File(uploadDir).getAbsolutePath(), docMediaDir).normalize().toAbsolutePath();
+            Path docMediaPath = mediaRoot.resolve("doc-" + docId).normalize().toAbsolutePath();
+            if (!docMediaPath.startsWith(mediaRoot) || !java.nio.file.Files.exists(docMediaPath)) {
+                return;
+            }
+            try (var paths = java.nio.file.Files.walk(docMediaPath)) {
+                paths.sorted(Comparator.reverseOrder())
+                        .forEach(path -> {
+                            try {
+                                java.nio.file.Files.deleteIfExists(path);
+                            } catch (IOException ex) {
+                                System.err.println("Failed to delete document media path: " + path + ", reason=" + ex.getMessage());
+                            }
+                        });
+            }
+        } catch (IOException ex) {
+            System.err.println("Failed to delete document media directory for docId=" + docId + ", reason=" + ex.getMessage());
         }
     }
 

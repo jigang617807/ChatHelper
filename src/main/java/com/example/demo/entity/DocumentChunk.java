@@ -24,6 +24,17 @@ public class DocumentChunk {
     @Column(name = "chunk_index")
     private int chunkIndex;
 
+    private Integer pageNumber;
+
+    private String sectionTitle;
+
+    private String contentType = ChunkContentType.TEXT.name();
+
+    private String sourcePath;
+
+    @Column(columnDefinition = "TEXT")
+    private String metadata;
+
     @Column(columnDefinition = "TEXT")
     private String text;
 

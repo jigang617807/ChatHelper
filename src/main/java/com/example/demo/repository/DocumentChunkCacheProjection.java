@@ -5,4 +5,16 @@ public interface DocumentChunkCacheProjection extends DocumentChunkProjection {
 
     @Override
     Integer getChunkIndex();
+
+    @Override
+    Integer getPageNumber();
+
+    @Override
+    String getSectionTitle();
+
+    @Override
+    String getContentType();
+
+    @Override
+    String getSourcePath();
 }

@@ -25,6 +25,18 @@ public class ChunkSearchDoc {
     @Field(type = FieldType.Integer)
     private Integer chunkIndex;
 
+    @Field(type = FieldType.Integer)
+    private Integer pageNumber;
+
+    @Field(type = FieldType.Keyword)
+    private String sectionTitle;
+
+    @Field(type = FieldType.Keyword)
+    private String contentType;
+
+    @Field(type = FieldType.Keyword)
+    private String sourcePath;
+
     @Field(type = FieldType.Text)
     private String text;
 

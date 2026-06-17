@@ -107,10 +107,24 @@ public class RagSearchReactTool implements ReactTool {
                 + ", documentTitle=" + document.getTitle()
                 + ", chunkId=" + evidence.getId()
                 + ", chunkIndex=" + evidence.getChunkIndex()
+                + ", page=" + evidence.getPageNumber()
+                + ", type=" + evidence.getContentType()
+                + ", section=" + blankToDefault(evidence.getSectionTitle(), "-")
                 + ", source=" + evidence.getSourceType()
                 + ", relevance=" + String.format(Locale.ROOT, "%.2f", evidence.getConfidence())
+                + sourcePathLine(evidence)
                 + "\n"
                 + (evidence.getText() == null ? "" : evidence.getText());
+    }
+
+    private String sourcePathLine(RagChunkEvidence evidence) {
+        return evidence.getSourcePath() == null || evidence.getSourcePath().isBlank()
+                ? ""
+                : ", sourcePath=" + evidence.getSourcePath();
+    }
+
+    private String blankToDefault(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value;
     }
 
     private Long longValue(Object value) {

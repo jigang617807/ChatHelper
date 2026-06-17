@@ -3,6 +3,8 @@ package com.example.agent.service;
 import com.example.agent.entity.AgentMessage;
 import com.example.agent.entity.AgentSession;
 import com.example.agent.executor.ReActAgentExecutor;
+import com.example.demo.service.ImageQuestionContext;
+import com.example.demo.service.ImageQuestionContextService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -29,6 +31,7 @@ public class AgentService {
     private final AgentSessionService sessionService;
     private final AgentStepService stepService;
     private final ReActAgentExecutor reactAgentExecutor;
+    private final ImageQuestionContextService imageQuestionContextService;
     private final int recentMessageLimit;
     private final int summaryMaxChars;
 
@@ -36,33 +39,44 @@ public class AgentService {
                         AgentSessionService sessionService,
                         AgentStepService stepService,
                         ReActAgentExecutor reactAgentExecutor,
+                        ImageQuestionContextService imageQuestionContextService,
                         @Value("${agent.history.recent-message-limit:12}") int recentMessageLimit,
                         @Value("${agent.history.summary-max-chars:3000}") int summaryMaxChars) {
         this.chatModel = chatModel;
         this.sessionService = sessionService;
         this.stepService = stepService;
         this.reactAgentExecutor = reactAgentExecutor;
+        this.imageQuestionContextService = imageQuestionContextService;
         this.recentMessageLimit = Math.max(MIN_RECENT_MESSAGE_LIMIT,
                 Math.min(recentMessageLimit, MAX_RECENT_MESSAGE_LIMIT));
         this.summaryMaxChars = Math.max(500, summaryMaxChars);
     }
 
     public Flux<String> streamAsk(Long userId, Long sessionId, String question) {
+        return streamAsk(userId, sessionId, question, null);
+    }
+
+    public Flux<String> streamAsk(Long userId, Long sessionId, String question, ImageQuestionContext imageContext) {
         String safeQuestion = question == null ? "" : question.trim();
         if (safeQuestion.isBlank()) {
             return Flux.just("Please enter a question for the AI agent.", "[DONE]");
         }
+        String imagePromptContext = imageQuestionContextService.buildPromptContext(imageContext);
+        String effectiveQuestion = imageContext == null
+                ? safeQuestion
+                : safeQuestion + "\n\n[图片输入]\n" + imageContext.description();
 
         AgentSession session = sessionService.getOrCreateSession(userId, sessionId);
-        AgentMessage userMessage = sessionService.saveMessage(session.getId(), "user", safeQuestion);
+        AgentMessage userMessage = sessionService.saveMessage(session.getId(), "user",
+                imageContext == null ? safeQuestion : safeQuestion + "\n\n![用户上传图片](" + imageContext.webPath() + ")");
         List<Message> history = buildHistoryWithSummary(session, userMessage.getId());
 
-        if (!requiresReactTools(safeQuestion)) {
-            return streamDirectAnswer(session, userMessage, safeQuestion, history);
+        if (!requiresReactTools(effectiveQuestion)) {
+            return streamDirectAnswer(session, userMessage, effectiveQuestion, imagePromptContext, history);
         }
 
         return Mono.fromCallable(() -> reactAgentExecutor.execute(
-                        userId, session.getId(), userMessage.getId(), safeQuestion, history))
+                        userId, session.getId(), userMessage.getId(), effectiveQuestion, history))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(answer -> {
                     sessionService.saveMessage(session.getId(), "assistant", answer);
@@ -77,6 +91,7 @@ public class AgentService {
     private Flux<String> streamDirectAnswer(AgentSession session,
                                             AgentMessage userMessage,
                                             String question,
+                                            String imagePromptContext,
                                             List<Message> history) {
         stepService.recordPlan(session.getId(), userMessage.getId(),
                 "Direct streaming answer; no external tool is required.");
@@ -87,8 +102,9 @@ public class AgentService {
                         You are the AI assistant in this Agent workspace.
                         Answer in Chinese with clear Markdown.
                         This request does not require local tools, web search, downloads, PDF generation, or RAG.
+                        %s
                         Do not output ReAct JSON. Output only the final user-facing answer.
-                        """)
+                        """.formatted(imagePromptContext == null ? "" : imagePromptContext))
                 .messages(history)
                 .user(question)
                 .stream()

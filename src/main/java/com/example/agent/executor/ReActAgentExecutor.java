@@ -154,6 +154,9 @@ public class ReActAgentExecutor {
                 7. Do not invent tool results. Base the final answer on observations.
                 8. Finish as soon as the task is sufficiently answered.
                 9. Never expose the ReAct JSON to the user. Put user-facing content only in finalAnswer.
+                10. When observations contain rag_search evidence like [S1], [S2], preserve those citation ids in the final answer.
+                11. For document-grounded answers, add a final "引用来源" section listing citation id, document title/id, chunk index and relevance when available.
+                12. If rag_search reports answer confidence, include it briefly and explain when evidence is insufficient.
 
                 Available tools:
                 %s

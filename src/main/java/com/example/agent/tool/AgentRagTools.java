@@ -102,14 +102,16 @@ public class AgentRagTools {
         }
         String evidence = searchResult.getEvidence().stream()
                 .limit(limit)
-                .map(this::formatEvidence)
+                .map(item -> formatEvidence(document, item))
                 .collect(Collectors.joining("\n\n---\n\n"));
         return evidence + searchResult.buildCitationSummary();
     }
 
-    private String formatEvidence(RagChunkEvidence evidence) {
+    private String formatEvidence(Document document, RagChunkEvidence evidence) {
         return "[" + evidence.getCitationId() + "] "
-                + "chunkId=" + evidence.getId()
+                + "documentId=" + document.getId()
+                + ", documentTitle=" + document.getTitle()
+                + ", chunkId=" + evidence.getId()
                 + ", chunkIndex=" + evidence.getChunkIndex()
                 + ", source=" + evidence.getSourceType()
                 + ", relevance=" + String.format(Locale.ROOT, "%.2f", evidence.getConfidence())

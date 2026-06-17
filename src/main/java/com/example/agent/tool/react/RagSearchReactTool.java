@@ -96,14 +96,16 @@ public class RagSearchReactTool implements ReactTool {
         }
         String result = searchResult.getEvidence().stream()
                 .limit(topK)
-                .map(this::formatEvidence)
+                .map(evidence -> formatEvidence(document, evidence))
                 .collect(Collectors.joining("\n\n---\n\n"));
         return ToolExecutionResult.success(result + searchResult.buildCitationSummary());
     }
 
-    private String formatEvidence(RagChunkEvidence evidence) {
+    private String formatEvidence(Document document, RagChunkEvidence evidence) {
         return "[" + evidence.getCitationId() + "] "
-                + "chunkId=" + evidence.getId()
+                + "documentId=" + document.getId()
+                + ", documentTitle=" + document.getTitle()
+                + ", chunkId=" + evidence.getId()
                 + ", chunkIndex=" + evidence.getChunkIndex()
                 + ", source=" + evidence.getSourceType()
                 + ", relevance=" + String.format(Locale.ROOT, "%.2f", evidence.getConfidence())

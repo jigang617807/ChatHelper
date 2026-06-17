@@ -33,6 +33,8 @@ import java.util.Set;
 public class RagService {
 
     private static final Logger log = LoggerFactory.getLogger(RagService.class);
+    private static final int MIN_CJK_NGRAM = 2;
+    private static final int MAX_CJK_NGRAM = 4;
 
     private final DocumentChunkRepository chunkRepo;
     private final ElasticsearchOperations elasticsearchOperations;
@@ -281,20 +283,41 @@ public class RagService {
         Set<String> tokens = new LinkedHashSet<>();
         String lower = text.toLowerCase(Locale.ROOT);
         StringBuilder current = new StringBuilder();
+        StringBuilder cjkRun = new StringBuilder();
         for (int offset = 0; offset < lower.length(); ) {
             int codePoint = lower.codePointAt(offset);
             if (Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN) {
                 flushToken(tokens, current);
-                tokens.add(new String(Character.toChars(codePoint)));
+                cjkRun.appendCodePoint(codePoint);
             } else if (Character.isLetterOrDigit(codePoint)) {
+                flushCjkTokens(tokens, cjkRun);
                 current.appendCodePoint(codePoint);
             } else {
                 flushToken(tokens, current);
+                flushCjkTokens(tokens, cjkRun);
             }
             offset += Character.charCount(codePoint);
         }
         flushToken(tokens, current);
+        flushCjkTokens(tokens, cjkRun);
         return tokens;
+    }
+
+    private void flushCjkTokens(Set<String> tokens, StringBuilder cjkRun) {
+        if (cjkRun.isEmpty()) {
+            return;
+        }
+        String value = cjkRun.toString();
+        int[] codePoints = value.codePoints().toArray();
+        for (int n = MIN_CJK_NGRAM; n <= MAX_CJK_NGRAM; n++) {
+            if (codePoints.length < n) {
+                break;
+            }
+            for (int start = 0; start <= codePoints.length - n; start++) {
+                tokens.add(new String(codePoints, start, n));
+            }
+        }
+        cjkRun.setLength(0);
     }
 
     private void flushToken(Set<String> tokens, StringBuilder current) {

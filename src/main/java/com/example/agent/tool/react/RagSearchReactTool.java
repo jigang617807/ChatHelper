@@ -2,14 +2,15 @@ package com.example.agent.tool.react;
 
 import com.example.demo.entity.DocStatus;
 import com.example.demo.entity.Document;
-import com.example.demo.repository.DocumentChunkProjection;
 import com.example.demo.repository.DocumentRepository;
 import com.example.demo.service.RagCachedRetrievalService;
+import com.example.demo.service.RagChunkEvidence;
+import com.example.demo.service.RagSearchResult;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Component
@@ -31,7 +32,7 @@ public class RagSearchReactTool implements ReactTool {
 
     @Override
     public String description() {
-        return "Search relevant chunks from uploaded documents. Use document_list first when the target document is unclear. documentId is required for a specific document; omit it only for explicit cross-document search.";
+        return "Search relevant chunks from uploaded documents with citation ids, lightweight rerank scores and retrieval confidence.";
     }
 
     @Override
@@ -89,17 +90,25 @@ public class RagSearchReactTool implements ReactTool {
             return ToolExecutionResult.failure("Document " + documentId + " is not ready for RAG search. Current status: " + document.getStatus());
         }
 
-        List<DocumentChunkProjection> chunks = ragCachedRetrievalService.searchRelevant(userId, documentId, question);
-        if (chunks == null || chunks.isEmpty()) {
+        RagSearchResult searchResult = ragCachedRetrievalService.search(userId, documentId, question);
+        if (searchResult.isEmpty()) {
             return ToolExecutionResult.success("No relevant chunks were found in document " + documentId + ".");
         }
-        String result = chunks.stream()
-                .filter(Objects::nonNull)
-                .map(DocumentChunkProjection::getText)
-                .filter(text -> text != null && !text.isBlank())
+        String result = searchResult.getEvidence().stream()
                 .limit(topK)
+                .map(this::formatEvidence)
                 .collect(Collectors.joining("\n\n---\n\n"));
-        return ToolExecutionResult.success(result);
+        return ToolExecutionResult.success(result + searchResult.buildCitationSummary());
+    }
+
+    private String formatEvidence(RagChunkEvidence evidence) {
+        return "[" + evidence.getCitationId() + "] "
+                + "chunkId=" + evidence.getId()
+                + ", chunkIndex=" + evidence.getChunkIndex()
+                + ", source=" + evidence.getSourceType()
+                + ", relevance=" + String.format(Locale.ROOT, "%.2f", evidence.getConfidence())
+                + "\n"
+                + (evidence.getText() == null ? "" : evidence.getText());
     }
 
     private Long longValue(Object value) {

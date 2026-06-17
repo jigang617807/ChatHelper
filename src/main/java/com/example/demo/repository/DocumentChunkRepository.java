@@ -24,7 +24,7 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
     @Query(value = "SELECT text FROM document_chunk WHERE document_id = :docId ORDER BY embedding <=> cast(cast(:queryVector as text) as vector) LIMIT :limit", nativeQuery = true)
     List<DocumentChunkProjection> searchSimilar(@Param("docId") Long docId, @Param("queryVector") String queryVector, @Param("limit") int limit);
 
-    @Query(value = "SELECT id, text, (embedding <=> cast(cast(:queryVector as text) as vector)) AS distance FROM document_chunk WHERE document_id = :docId ORDER BY embedding <=> cast(cast(:queryVector as text) as vector) LIMIT :limit", nativeQuery = true)
+    @Query(value = "SELECT id, text, chunk_index AS \"chunkIndex\", (embedding <=> cast(cast(:queryVector as text) as vector)) AS distance FROM document_chunk WHERE document_id = :docId ORDER BY embedding <=> cast(cast(:queryVector as text) as vector) LIMIT :limit", nativeQuery = true)
     List<DocumentChunkVectorHitProjection> searchSimilarWithDistance(@Param("docId") Long docId,
                                                                      @Param("queryVector") String queryVector,
                                                                      @Param("limit") int limit);

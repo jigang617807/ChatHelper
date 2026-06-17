@@ -1,6 +1,5 @@
 package com.example.demo.service;
 
-import com.example.demo.repository.DocumentChunkCacheProjection;
 import com.example.demo.repository.DocumentChunkProjection;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -15,17 +14,18 @@ public class RagCachedRetrievalService {
     private final RagService ragService;
     private final RagRetrievalCacheService cacheService;
 
-    public List<DocumentChunkProjection> searchRelevant(Long userId, Long documentId, String question) {
-        var cachedChunks = cacheService.get(userId, documentId, question);
-        if (cachedChunks.isPresent()) {
-            return new ArrayList<>(cachedChunks.get());
+    public RagSearchResult search(Long userId, Long documentId, String question) {
+        var cachedResult = cacheService.getResult(userId, documentId, question);
+        if (cachedResult.isPresent()) {
+            return cachedResult.get();
         }
-        return searchAndCache(userId, documentId, question);
+        RagSearchResult result = ragService.search(documentId, question);
+        cacheService.putResult(userId, documentId, question, result);
+        return result;
     }
 
-    private List<DocumentChunkProjection> searchAndCache(Long userId, Long documentId, String question) {
-        List<DocumentChunkCacheProjection> chunks = ragService.searchRelevantWithIds(documentId, question);
-        cacheService.put(userId, documentId, question, chunks);
-        return new ArrayList<>(chunks);
+    public List<DocumentChunkProjection> searchRelevant(Long userId, Long documentId, String question) {
+        return new ArrayList<>(search(userId, documentId, question).getEvidence());
     }
+
 }

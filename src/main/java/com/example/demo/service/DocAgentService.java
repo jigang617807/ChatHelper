@@ -1,9 +1,6 @@
 package com.example.demo.service;
 
-import com.example.demo.repository.DocumentChunkProjection;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Service
 public class DocAgentService {
@@ -29,16 +26,16 @@ public class DocAgentService {
         };
     }
 
-    public String buildAgentPrompt(String task, String question, List<DocumentChunkProjection> chunks) {
+    public String buildAgentPrompt(String task, String question, RagSearchResult searchResult) {
         String normalizedTask = normalizeTask(task);
         String safeQuestion = (question == null || question.isBlank()) ? defaultQuestionForTask(normalizedTask) : question;
         String taskInstruction = taskInstruction(normalizedTask);
-        String context = buildContext(chunks);
+        String context = searchResult == null ? "(No retrieved context)" : searchResult.buildPromptContext();
 
         return """
-                你是“文档任务Agent”。
-                请严格基于检索到的上下文完成任务，不要编造信息。
+                你是“文档任务 Agent”。请严格基于检索证据完成任务，不要编造信息。
                 如果上下文不足，请明确指出缺失信息。
+                回答中的关键结论后请尽量标注引用编号，例如 [S1]、[S2]。
                 你必须始终使用简体中文输出。
 
                 任务类型：
@@ -47,7 +44,7 @@ public class DocAgentService {
                 任务指令：
                 %s
 
-                检索上下文：
+                检索证据：
                 %s
 
                 用户请求：
@@ -56,29 +53,16 @@ public class DocAgentService {
                 输出要求：
                 1. 使用简洁、结构化的 Markdown。
                 2. 先给结论，再给细节。
-                3. 最后增加“证据引用”小节，引用 2-5 条关键依据。
+                3. 证据不足时降低语气确定性，并说明需要补充的材料。
                 """.formatted(normalizedTask, taskInstruction, context, safeQuestion);
-    }
-
-    private String buildContext(List<DocumentChunkProjection> chunks) {
-        if (chunks == null || chunks.isEmpty()) {
-            return "(No retrieved context)";
-        }
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < chunks.size(); i++) {
-            DocumentChunkProjection chunk = chunks.get(i);
-            builder.append("[Chunk ").append(i + 1).append("]\n");
-            builder.append(chunk.getText() == null ? "" : chunk.getText()).append("\n\n");
-        }
-        return builder.toString();
     }
 
     private String taskInstruction(String task) {
         return switch (task) {
-            case "outline" -> "生成清晰提纲，包含章节和关键要点，可直接用于写作或评审。";
+            case "outline" -> "生成清晰提纲，包含章节、关键要点和可执行后续动作。";
             case "risk" -> "识别风险、不一致项、缺失假设和表述不清处，并给出具体优化建议。";
-            case "qa" -> "先直接回答用户问题，再补充支撑细节。";
-            default -> "生成结构化摘要，包含：背景、核心内容、方法机制、预期价值。";
+            case "qa" -> "先直接回答用户问题，再补充支撑细节和证据编号。";
+            default -> "生成结构化摘要，包含背景、核心内容、方法机制、结论或价值。";
         };
     }
 

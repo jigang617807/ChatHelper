@@ -17,7 +17,6 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -40,10 +39,15 @@ public class RagRetrievalCacheService {
     @Value("${rag.cache.ttl-seconds:3600}")
     private long ttlSeconds;
 
-    @Value("${rag.cache.key-prefix:rag:retrieval:v1}")
+    @Value("${rag.cache.key-prefix:rag:retrieval:v2}")
     private String keyPrefix;
 
     public Optional<List<DocumentChunkCacheProjection>> get(Long userId, Long documentId, String question) {
+        return getResult(userId, documentId, question)
+                .map(result -> new ArrayList<DocumentChunkCacheProjection>(result.getEvidence()));
+    }
+
+    public Optional<RagSearchResult> getResult(Long userId, Long documentId, String question) {
         if (!enabled || userId == null || documentId == null || question == null || question.isBlank()) {
             return Optional.empty();
         }
@@ -55,16 +59,59 @@ public class RagRetrievalCacheService {
             }
 
             RetrievalCacheEntry entry = objectMapper.readValue(json, RetrievalCacheEntry.class);
-            if (entry.chunkIds() == null || entry.chunkIds().isEmpty()) {
+            if (entry.chunks() == null || entry.chunks().isEmpty()) {
                 return Optional.empty();
             }
 
-            List<DocumentChunkCacheProjection> chunks =
-                    chunkRepository.findByDocumentIdAndIdIn(documentId, entry.chunkIds());
-            if (chunks.isEmpty()) {
+            List<Long> chunkIds = entry.chunks().stream()
+                    .map(CachedChunk::id)
+                    .filter(id -> id != null)
+                    .toList();
+            if (chunkIds.isEmpty()) {
                 return Optional.empty();
             }
-            return Optional.of(orderByCachedIds(chunks, entry.chunkIds()));
+
+            List<DocumentChunkCacheProjection> liveChunks =
+                    chunkRepository.findByDocumentIdAndIdIn(documentId, chunkIds);
+            if (liveChunks.isEmpty()) {
+                return Optional.empty();
+            }
+
+            Map<Long, DocumentChunkCacheProjection> liveById = new HashMap<>();
+            for (DocumentChunkCacheProjection chunk : liveChunks) {
+                liveById.put(chunk.getId(), chunk);
+            }
+
+            List<RagChunkEvidence> evidence = new ArrayList<>();
+            for (CachedChunk cached : entry.chunks()) {
+                DocumentChunkCacheProjection live = liveById.get(cached.id());
+                if (live == null) {
+                    continue;
+                }
+                evidence.add(new RagChunkEvidence(
+                        live.getId(),
+                        live.getText(),
+                        live.getChunkIndex(),
+                        cached.citationId(),
+                        cached.sourceType(),
+                        cached.score(),
+                        cached.confidence(),
+                        cached.vectorScore(),
+                        cached.bm25Score(),
+                        cached.vectorRank(),
+                        cached.bm25Rank()
+                ));
+            }
+            if (evidence.isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(new RagSearchResult(
+                    question,
+                    evidence,
+                    entry.confidenceScore(),
+                    entry.confidenceLevel(),
+                    entry.confidenceReason()
+            ));
         } catch (Exception ex) {
             log.warn("RAG retrieval cache read skipped. documentId={}, reason={}", documentId, ex.getMessage());
             return Optional.empty();
@@ -75,24 +122,68 @@ public class RagRetrievalCacheService {
                     Long documentId,
                     String question,
                     List<? extends DocumentChunkCacheProjection> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return;
+        }
+        List<RagChunkEvidence> evidence = new ArrayList<>();
+        for (int i = 0; i < chunks.size(); i++) {
+            DocumentChunkCacheProjection chunk = chunks.get(i);
+            evidence.add(new RagChunkEvidence(
+                    chunk.getId(),
+                    chunk.getText(),
+                    chunk.getChunkIndex(),
+                    "S" + (i + 1),
+                    "CACHED",
+                    0.0,
+                    0.5,
+                    0.0,
+                    0.0,
+                    null,
+                    null
+            ));
+        }
+        putResult(userId, documentId, question,
+                new RagSearchResult(question, evidence, 0.5, "中", "来自兼容缓存写入，未包含完整检索分数。"));
+    }
+
+    public void putResult(Long userId, Long documentId, String question, RagSearchResult result) {
         if (!enabled || userId == null || documentId == null || question == null || question.isBlank()
-                || chunks == null || chunks.isEmpty()) {
+                || result == null || result.getEvidence().isEmpty()) {
             return;
         }
 
-        List<Long> chunkIds = chunks.stream()
-                .map(DocumentChunkCacheProjection::getId)
+        List<Long> chunkIds = result.getEvidence().stream()
+                .map(RagChunkEvidence::getId)
                 .filter(id -> id != null)
-                .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+                .toList();
         if (chunkIds.isEmpty()) {
             return;
         }
+
+        List<CachedChunk> chunks = result.getEvidence().stream()
+                .filter(item -> item.getId() != null)
+                .map(item -> new CachedChunk(
+                        item.getId(),
+                        item.getCitationId(),
+                        item.getSourceType(),
+                        item.getScore(),
+                        item.getConfidence(),
+                        item.getVectorScore(),
+                        item.getBm25Score(),
+                        item.getVectorRank(),
+                        item.getBm25Rank()
+                ))
+                .toList();
 
         RetrievalCacheEntry entry = new RetrievalCacheEntry(
                 userId,
                 documentId,
                 normalizeQuestion(question),
                 chunkIds,
+                chunks,
+                result.getConfidenceScore(),
+                result.getConfidenceLevel(),
+                result.getConfidenceReason(),
                 Instant.now().toEpochMilli()
         );
 
@@ -127,18 +218,6 @@ public class RagRetrievalCacheService {
         }
     }
 
-    private List<DocumentChunkCacheProjection> orderByCachedIds(List<DocumentChunkCacheProjection> chunks,
-                                                                 List<Long> cachedIds) {
-        Map<Long, Integer> order = new HashMap<>();
-        for (int i = 0; i < cachedIds.size(); i++) {
-            order.putIfAbsent(cachedIds.get(i), i);
-        }
-        return chunks.stream()
-                .filter(chunk -> chunk.getId() != null)
-                .sorted(Comparator.comparingInt(chunk -> order.getOrDefault(chunk.getId(), Integer.MAX_VALUE)))
-                .toList();
-    }
-
     private String cacheKey(Long userId, Long documentId, String question) {
         return keyPrefix + ":user:" + userId + ":doc:" + documentId + ":q:" + sha256(normalizeQuestion(question));
     }
@@ -170,7 +249,24 @@ public class RagRetrievalCacheService {
             Long documentId,
             String normalizedQuestion,
             List<Long> chunkIds,
+            List<CachedChunk> chunks,
+            double confidenceScore,
+            String confidenceLevel,
+            String confidenceReason,
             long createdAt
+    ) {
+    }
+
+    public record CachedChunk(
+            Long id,
+            String citationId,
+            String sourceType,
+            double score,
+            double confidence,
+            Double vectorScore,
+            Double bm25Score,
+            Integer vectorRank,
+            Integer bm25Rank
     ) {
     }
 }

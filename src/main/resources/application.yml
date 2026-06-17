@@ -99,7 +99,7 @@ rag:
   cache:
     enabled: ${RAG_CACHE_ENABLED:true}
     ttl-seconds: ${RAG_CACHE_TTL_SECONDS:3600}
-    key-prefix: rag:retrieval:v1
+    key-prefix: rag:retrieval:v2
   retrieval:
     vector-topk: ${RAG_VECTOR_TOPK:20}
     bm25-topk: ${RAG_BM25_TOPK:20}
@@ -110,7 +110,7 @@ rag:
       vector-weight: ${RAG_FUSION_VECTOR_WEIGHT:0.6}
       bm25-weight: ${RAG_FUSION_BM25_WEIGHT:0.4}
     rerank:
-      enabled: ${RAG_RERANK_ENABLED:false}
+      enabled: ${RAG_RERANK_ENABLED:true}
 
 document:
   processing:

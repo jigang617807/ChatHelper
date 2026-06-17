@@ -6,11 +6,11 @@ import com.example.demo.entity.DocStatus;
 import com.example.demo.entity.Document;
 import com.example.demo.repository.ChatMessageRepository;
 import com.example.demo.repository.ConversationRepository;
-import com.example.demo.repository.DocumentChunkProjection;
 import com.example.demo.repository.DocumentRepository;
 import com.example.demo.service.DocAgentService;
 import com.example.demo.service.DocumentService;
 import com.example.demo.service.RagCachedRetrievalService;
+import com.example.demo.service.RagSearchResult;
 import com.example.demo.service.SpringAiService;
 import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
@@ -89,12 +89,12 @@ public class DocAgentController {
 
         Long uid = (Long) session.getAttribute("uid");
         if (uid == null) {
-            return Flux.just("【错误】用户未登录或会话已过期");
+            return Flux.just("【错误】用户未登录或会话已过期", "[DONE]");
         }
 
         boolean owned = documentRepository.existsByIdAndUserId(documentId, uid);
         if (!owned) {
-            return Flux.just("【错误】无权访问该文档");
+            return Flux.just("【错误】无权访问该文档", "[DONE]");
         }
 
         String normalizedTask = docAgentService.normalizeTask(task);
@@ -102,8 +102,8 @@ public class DocAgentController {
                 ? docAgentService.defaultQuestionForTask(normalizedTask)
                 : question;
 
-        List<DocumentChunkProjection> chunks = ragCachedRetrievalService.searchRelevant(uid, documentId, effectiveQuestion);
-        String prompt = docAgentService.buildAgentPrompt(normalizedTask, effectiveQuestion, chunks);
+        RagSearchResult searchResult = ragCachedRetrievalService.search(uid, documentId, effectiveQuestion);
+        String prompt = docAgentService.buildAgentPrompt(normalizedTask, effectiveQuestion, searchResult);
         List<ChatMessage> history = chatMessageRepository.findByConversationIdOrderByIdAsc(conversationId);
 
         ChatMessage userMessage = new ChatMessage();
@@ -120,9 +120,14 @@ public class DocAgentController {
                 },
                 err -> {
                     sink.next("【错误】" + err.getMessage());
+                    sink.next("[DONE]");
                     sink.complete();
                 },
                 () -> {
+                    String citationSummary = searchResult.buildCitationSummary();
+                    finalReply.append(citationSummary);
+                    sink.next(citationSummary);
+
                     ChatMessage ai = new ChatMessage();
                     ai.setConversationId(conversationId);
                     ai.setRole("assistant");

@@ -2,9 +2,10 @@ package com.example.agent.tool;
 
 import com.example.demo.entity.DocStatus;
 import com.example.demo.entity.Document;
-import com.example.demo.repository.DocumentChunkProjection;
 import com.example.demo.repository.DocumentRepository;
 import com.example.demo.service.RagCachedRetrievalService;
+import com.example.demo.service.RagChunkEvidence;
+import com.example.demo.service.RagSearchResult;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -12,7 +13,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Objects;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 @Component
@@ -94,17 +95,26 @@ public class AgentRagTools {
             return "Document " + documentId + " is not ready for RAG search. Current status: " + document.getStatus();
         }
 
-        List<DocumentChunkProjection> chunks =
-                ragCachedRetrievalServiceProvider.getObject().searchRelevant(userId, documentId, question);
-        if (chunks == null || chunks.isEmpty()) {
+        RagSearchResult searchResult =
+                ragCachedRetrievalServiceProvider.getObject().search(userId, documentId, question);
+        if (searchResult.isEmpty()) {
             return "No relevant chunks were found in document " + documentId + ".";
         }
-        return chunks.stream()
-                .filter(Objects::nonNull)
-                .map(DocumentChunkProjection::getText)
-                .filter(text -> text != null && !text.isBlank())
+        String evidence = searchResult.getEvidence().stream()
                 .limit(limit)
+                .map(this::formatEvidence)
                 .collect(Collectors.joining("\n\n---\n\n"));
+        return evidence + searchResult.buildCitationSummary();
+    }
+
+    private String formatEvidence(RagChunkEvidence evidence) {
+        return "[" + evidence.getCitationId() + "] "
+                + "chunkId=" + evidence.getId()
+                + ", chunkIndex=" + evidence.getChunkIndex()
+                + ", source=" + evidence.getSourceType()
+                + ", relevance=" + String.format(Locale.ROOT, "%.2f", evidence.getConfidence())
+                + "\n"
+                + (evidence.getText() == null ? "" : evidence.getText());
     }
 
     private Long currentUserId(ToolContext context) {

@@ -1,11 +1,12 @@
 package com.example.demo.controller;
 
+import com.example.demo.entity.ChatMessage;
 import com.example.demo.entity.Conversation;
 import com.example.demo.repository.ChatMessageRepository;
 import com.example.demo.repository.ConversationRepository;
-import com.example.demo.repository.DocumentChunkProjection;
 import com.example.demo.repository.DocumentRepository;
 import com.example.demo.service.RagCachedRetrievalService;
+import com.example.demo.service.RagSearchResult;
 import com.example.demo.service.SpringAiService;
 import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
@@ -67,13 +68,11 @@ public class ChatController {
 
         try {
             String title = "Doc-" + documentId + " 对话";
-
             convRepo.findTopByUserIdAndTitle(uid, title).ifPresent(conversation -> {
                 Long conversationId = conversation.getId();
                 msgRepo.deleteByConversationId(conversationId);
                 convRepo.deleteById(conversationId);
             });
-
             return ResponseEntity.ok("聊天记录已清空");
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("清空失败: " + e.getMessage());
@@ -89,24 +88,34 @@ public class ChatController {
 
         Long uid = (Long) session.getAttribute("uid");
         if (uid == null) {
-            return Flux.just("data:【错误】用户未登录或会话已过期");
+            return Flux.just("【错误】用户未登录或会话已过期", "[DONE]");
         }
 
         boolean owned = documentRepository.existsByIdAndUserId(documentId, uid);
         if (!owned) {
-            return Flux.just("data:【错误】无权访问该文档");
+            return Flux.just("【错误】无权访问该文档", "[DONE]");
         }
 
-        List<DocumentChunkProjection> chunks = ragCachedRetrievalService.searchRelevant(uid, documentId, question);
-        StringBuilder context = new StringBuilder();
-        for (DocumentChunkProjection chunk : chunks) {
-            context.append(chunk.getText()).append("\n");
-        }
+        RagSearchResult searchResult = ragCachedRetrievalService.search(uid, documentId, question);
+        String ragPrompt = """
+                你是企业文档知识库助手。请严格基于“检索证据”回答用户问题，不要编造证据外的信息。
+                如果证据不足，请明确说明“当前文档证据不足”，并给出还需要补充哪些信息。
+                回答中的关键结论后请尽量标注引用编号，例如 [S1]、[S2]。
 
-        String ragPrompt = "参考文档片段:\n" + context + "\n用户问题:\n" + question;
-        List<com.example.demo.entity.ChatMessage> history = msgRepo.findByConversationIdOrderByIdAsc(conversationId);
+                检索证据：
+                %s
 
-        com.example.demo.entity.ChatMessage user = new com.example.demo.entity.ChatMessage();
+                用户问题：
+                %s
+
+                输出要求：
+                1. 使用简体中文。
+                2. 先直接回答，再补充依据。
+                3. 不要输出没有证据支撑的确定性结论。
+                """.formatted(searchResult.buildPromptContext(), question);
+        List<ChatMessage> history = msgRepo.findByConversationIdOrderByIdAsc(conversationId);
+
+        ChatMessage user = new ChatMessage();
         user.setConversationId(conversationId);
         user.setRole("user");
         user.setMessage(question);
@@ -120,11 +129,16 @@ public class ChatController {
                     sink.next(chunk);
                 },
                 err -> {
-                    sink.next("data:【错误】" + err.getMessage());
+                    sink.next("【错误】" + err.getMessage());
+                    sink.next("[DONE]");
                     sink.complete();
                 },
                 () -> {
-                    com.example.demo.entity.ChatMessage ai = new com.example.demo.entity.ChatMessage();
+                    String citationSummary = searchResult.buildCitationSummary();
+                    finalReply.append(citationSummary);
+                    sink.next(citationSummary);
+
+                    ChatMessage ai = new ChatMessage();
                     ai.setConversationId(conversationId);
                     ai.setRole("assistant");
                     ai.setMessage(finalReply.toString());

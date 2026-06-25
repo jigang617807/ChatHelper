@@ -1,5 +1,13 @@
 # Local Load Testing
 
+> 新增的一键真实链路基准测试请先阅读 [`BENCHMARK.md`](./BENCHMARK.md)。启动项目后，从仓库根目录运行：
+>
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File .\loadtest\run-benchmark.ps1 -Profile smoke -DocId 你的文档ID
+> ```
+>
+> 每次运行会在 `loadtest/results/` 下生成可追溯的 JSON、CSV 和 Markdown 报告。下文保留原有单脚本调试方法。
+
 这是一组只针对本地项目的压测脚本，不修改任何 Spring Boot 业务代码。
 
 ## 1. 准备
@@ -137,4 +145,3 @@ https://download.pdfsample.com/pdf/sample-50mb.pdf
 ```text
 https://www.fileexamples.com/sample-sizes
 ```
-

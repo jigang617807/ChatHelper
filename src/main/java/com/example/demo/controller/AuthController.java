@@ -40,9 +40,8 @@ public class AuthController {
         Object username = session.getAttribute("username");
         Object avatarPath = session.getAttribute("avatarPath");
         Long uid = (Long) session.getAttribute("uid");
-        User user = userService.getUser(uid);
 
-        if (username == null) return "redirect:/auth/login";
+        if (username == null || uid == null) return "redirect:/auth/login";
         model.addAttribute("username", username);
         model.addAttribute("avatarPath", avatarPath);
         return "home";

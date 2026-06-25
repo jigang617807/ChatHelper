@@ -68,6 +68,8 @@ zhipu:
   chat-model: "glm-4.7-flash"
 
 agent:
+  admin:
+    user-ids: ${AGENT_ADMIN_USER_IDS:1}
   history:
     recent-message-limit: ${AGENT_HISTORY_RECENT_MESSAGE_LIMIT:12}
     summary-max-chars: ${AGENT_HISTORY_SUMMARY_MAX_CHARS:3000}

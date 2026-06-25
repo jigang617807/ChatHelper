@@ -187,7 +187,7 @@ public class ReActAgentExecutor {
     }
 
     private SkillProfile defaultSkill() {
-        return new SkillProfile(null, "general", "General Agent", "", "", "SUMMARY", Set.of());
+        return new SkillProfile(null, "general", "General Agent", "", "", "SUMMARY", true, Set.of());
     }
 
     private String userPrompt(String question, List<String> observations, int step) {

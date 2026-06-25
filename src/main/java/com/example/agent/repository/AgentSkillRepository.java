@@ -10,5 +10,7 @@ public interface AgentSkillRepository extends JpaRepository<AgentSkill, Long> {
 
     Optional<AgentSkill> findByCode(String code);
 
+    List<AgentSkill> findAllByOrderByIdAsc();
+
     List<AgentSkill> findByEnabledTrueOrderByIdAsc();
 }

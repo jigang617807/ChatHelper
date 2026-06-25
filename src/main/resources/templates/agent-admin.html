@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent 管理台</title>
+    <link rel="stylesheet" href="/premium.css">
+</head>
+<body>
+<div class="agent-admin-shell">
+    <header class="agent-admin-header">
+        <div>
+            <p class="eyebrow">Agent Operations</p>
+            <h1>Agent 管理台</h1>
+            <p>发现 MCP 工具、启停工具，并把工具编排到不同 skill 中。</p>
+        </div>
+        <div class="agent-admin-actions">
+            <a class="btn btn-secondary" href="/agent">返回 Agent</a>
+            <a class="btn" href="/agent/admin">刷新发现</a>
+        </div>
+    </header>
+
+    <section class="agent-admin-metrics">
+        <div class="agent-admin-metric">
+            <span>工具总数</span>
+            <strong th:text="${toolCount}">0</strong>
+        </div>
+        <div class="agent-admin-metric">
+            <span>MCP 工具</span>
+            <strong th:text="${mcpToolCount}">0</strong>
+        </div>
+        <div class="agent-admin-metric">
+            <span>启用工具</span>
+            <strong th:text="${enabledToolCount}">0</strong>
+        </div>
+    </section>
+
+    <main class="agent-admin-grid">
+        <section class="agent-admin-panel">
+            <div class="section-heading">
+                <span>工具发现与启停</span>
+                <small>LOCAL / MCP / SYSTEM</small>
+            </div>
+            <div class="agent-admin-tool-list">
+                <article th:each="tool : ${tools}" class="agent-admin-tool">
+                    <div class="agent-admin-tool-main">
+                        <div class="agent-admin-tool-title">
+                            <code th:text="${tool.toolName}">tool_name</code>
+                            <span th:class="${tool.toolSource.name() == 'MCP'} ? 'badge badge-success' : (${tool.toolSource.name() == 'LOCAL'} ? 'badge badge-warning' : 'badge badge-pending')"
+                                  th:text="${tool.toolSource}">LOCAL</span>
+                            <span th:class="${tool.enabled} ? 'badge badge-success' : 'badge badge-danger'"
+                                  th:text="${tool.enabled} ? '启用' : '停用'">启用</span>
+                        </div>
+                        <p th:text="${tool.description}">工具描述</p>
+                    </div>
+                    <form th:action="@{/agent/admin/tools/{toolName}/enabled(toolName=${tool.toolName})}" method="post">
+                        <input type="hidden" name="enabled" th:value="${!tool.enabled}">
+                        <button th:class="${tool.enabled} ? 'btn btn-danger btn-sm' : 'btn btn-success btn-sm'"
+                                type="submit"
+                                th:text="${tool.enabled} ? '停用' : '启用'">切换</button>
+                    </form>
+                </article>
+                <div th:if="${#lists.isEmpty(tools)}" class="agent-admin-empty">
+                    暂未发现工具。开启 MCP 后点击刷新发现，或确认本地工具 Bean 是否正常注册。
+                </div>
+            </div>
+        </section>
+
+        <section class="agent-admin-panel">
+            <div class="section-heading">
+                <span>Skill 工具编排</span>
+                <small>保存后立即影响新一轮 Agent 执行</small>
+            </div>
+
+            <article th:each="skill : ${skills}" class="agent-admin-skill">
+                <div class="agent-admin-skill-head">
+                    <div>
+                        <h2 th:text="${skill.name}">General Agent</h2>
+                        <p>
+                            <code th:text="${skill.code}">general</code>
+                            <span th:text="'Memory: ' + ${skill.memoryStrategy}">Memory: SUMMARY</span>
+                        </p>
+                    </div>
+                    <form th:if="${skill.code != 'general'}"
+                          th:action="@{/agent/admin/skills/{skillId}/enabled(skillId=${skill.id})}" method="post">
+                        <input type="hidden" name="enabled" th:value="${skill.enabled == null ? true : !skill.enabled}">
+                        <button th:class="${skill.enabled} ? 'btn btn-danger btn-sm' : 'btn btn-success btn-sm'"
+                                type="submit"
+                                th:text="${skill.enabled} ? '停用' : '启用'">切换</button>
+                    </form>
+                    <span th:if="${skill.code == 'general'}" class="badge badge-pending">默认保留</span>
+                </div>
+
+                <p class="agent-admin-skill-desc" th:text="${skill.description}">Skill description</p>
+
+                <form th:action="@{/agent/admin/skills/{skillId}/tools(skillId=${skill.id})}" method="post">
+                    <div class="agent-admin-tool-picker">
+                        <label th:each="tool : ${tools}"
+                               th:class="${tool.enabled} ? 'agent-admin-tool-chip' : 'agent-admin-tool-chip disabled'">
+                            <input type="checkbox"
+                                   name="toolNames"
+                                   th:value="${tool.toolName}"
+                                   th:checked="${skill.allowedTools.contains(tool.toolName)}">
+                            <span th:text="${tool.toolName}">tool_name</span>
+                            <em th:text="${tool.toolSource}">LOCAL</em>
+                        </label>
+                    </div>
+                    <div class="agent-admin-skill-actions">
+                        <button class="btn btn-secondary btn-sm" type="submit">保存工具编排</button>
+                        <small th:text="'当前工具数：' + ${skill.allowedTools.size()}">当前工具数：0</small>
+                    </div>
+                </form>
+            </article>
+        </section>
+    </main>
+</div>
+</body>
+</html>

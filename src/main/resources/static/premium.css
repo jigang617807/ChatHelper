@@ -1349,3 +1349,238 @@ th { background: rgba(126,162,255,.22); color: #e0e9ff; }
     align-items: center;
   }
 }
+
+/* Agent admin console. */
+.agent-admin-shell {
+  width: 100%;
+  min-height: 100vh;
+  padding: 14px;
+}
+
+.agent-admin-header,
+.agent-admin-panel,
+.agent-admin-metric {
+  backdrop-filter: blur(14px);
+  background: linear-gradient(180deg, rgba(255,255,255,.115), rgba(255,255,255,.065));
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+
+.agent-admin-header {
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px;
+}
+
+.agent-admin-header h1 {
+  margin-bottom: 8px;
+  font-size: clamp(30px, 4vw, 48px);
+}
+
+.agent-admin-header p {
+  margin-top: 0;
+}
+
+.agent-admin-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.agent-admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.agent-admin-metric {
+  min-height: 96px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.agent-admin-metric span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.agent-admin-metric strong {
+  margin-top: 6px;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.agent-admin-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, .85fr) minmax(0, 1.15fr);
+  gap: 12px;
+  margin-top: 12px;
+  align-items: start;
+}
+
+.agent-admin-panel {
+  padding: 18px;
+}
+
+.agent-admin-tool-list {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-admin-tool,
+.agent-admin-skill {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(4,8,20,.36);
+}
+
+.agent-admin-tool {
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+}
+
+.agent-admin-tool-title,
+.agent-admin-skill-head,
+.agent-admin-skill-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.agent-admin-tool-title {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.agent-admin-tool code,
+.agent-admin-skill code {
+  color: #dce8ff;
+  font-weight: 800;
+}
+
+.agent-admin-tool p,
+.agent-admin-skill p {
+  margin: 8px 0 0;
+  line-height: 1.6;
+}
+
+.agent-admin-empty {
+  padding: 30px 14px;
+  color: var(--muted);
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+}
+
+.agent-admin-skill {
+  margin-bottom: 12px;
+  padding: 14px;
+}
+
+.agent-admin-skill h2 {
+  margin-bottom: 4px;
+  font-size: 20px;
+}
+
+.agent-admin-skill-head p {
+  margin: 0;
+}
+
+.agent-admin-skill-desc {
+  color: var(--muted);
+}
+
+.agent-admin-tool-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.agent-admin-tool-chip {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255,255,255,.055);
+  color: var(--text);
+}
+
+.agent-admin-tool-chip.disabled {
+  opacity: .55;
+}
+
+.agent-admin-tool-chip input {
+  width: auto;
+}
+
+.agent-admin-tool-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+}
+
+.agent-admin-tool-chip em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.agent-admin-skill-actions {
+  margin-top: 12px;
+}
+
+.agent-admin-skill-actions small {
+  color: var(--muted);
+}
+
+@media (max-width: 980px) {
+  .agent-admin-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .agent-admin-actions {
+    justify-content: flex-start;
+  }
+
+  .agent-admin-metrics,
+  .agent-admin-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .agent-admin-shell {
+    padding: 10px;
+  }
+
+  .agent-admin-tool,
+  .agent-admin-skill-head,
+  .agent-admin-skill-actions {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+}

@@ -33,6 +33,12 @@ public class AgentSkillService {
                 .toList();
     }
 
+    public List<SkillProfile> listSkillProfiles() {
+        return skillRepository.findAllByOrderByIdAsc().stream()
+                .map(this::toProfile)
+                .toList();
+    }
+
     public SkillProfile resolveSkill(Long skillId) {
         AgentSkill skill = null;
         if (skillId != null) {
@@ -50,6 +56,34 @@ public class AgentSkillService {
 
     public SkillProfile resolveDefaultSkill() {
         return resolveSkill(null);
+    }
+
+    @Transactional
+    public SkillProfile setSkillEnabled(Long skillId, boolean enabled) {
+        AgentSkill skill = skillRepository.findById(skillId)
+                .orElseThrow(() -> new IllegalArgumentException("Skill is not registered: " + skillId));
+        if (DEFAULT_SKILL_CODE.equals(skill.getCode()) && !enabled) {
+            throw new IllegalArgumentException("Default skill cannot be disabled");
+        }
+        skill.setEnabled(enabled);
+        skill = skillRepository.save(skill);
+        return toProfile(skill);
+    }
+
+    @Transactional
+    public SkillProfile replaceSkillTools(Long skillId, List<String> toolNames) {
+        AgentSkill skill = skillRepository.findById(skillId)
+                .orElseThrow(() -> new IllegalArgumentException("Skill is not registered: " + skillId));
+        skillToolRepository.deleteBySkillId(skillId);
+        int order = 0;
+        for (String toolName : normalizeToolNames(toolNames)) {
+            AgentSkillTool link = new AgentSkillTool();
+            link.setSkillId(skillId);
+            link.setToolName(toolName);
+            link.setSortOrder(order++);
+            skillToolRepository.save(link);
+        }
+        return toProfile(skill);
     }
 
     @Transactional
@@ -117,6 +151,7 @@ public class AgentSkillService {
                 blankToDefault(skill.getDescription(), ""),
                 blankToDefault(skill.getSystemPrompt(), ""),
                 blankToDefault(skill.getMemoryStrategy(), MEMORY_SUMMARY),
+                skill.getEnabled(),
                 allowedTools
         );
     }
@@ -166,6 +201,19 @@ public class AgentSkillService {
         return value == null || value.isBlank() ? defaultValue : value;
     }
 
+    private List<String> normalizeToolNames(List<String> toolNames) {
+        if (toolNames == null) {
+            return List.of();
+        }
+        return toolNames.stream()
+                .filter(value -> value != null)
+                .flatMap(value -> List.of(value.split(",")).stream())
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
+    }
+
     public record SkillProfile(
             Long id,
             String code,
@@ -173,6 +221,7 @@ public class AgentSkillService {
             String description,
             String systemPrompt,
             String memoryStrategy,
+            Boolean enabled,
             Set<String> allowedTools
     ) {
         public boolean summaryMemoryEnabled() {

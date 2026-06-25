@@ -1,6 +1,8 @@
 package com.example.agent.controller;
 
 import com.example.agent.entity.AgentSession;
+import com.example.agent.entity.AgentToolConfig;
+import com.example.agent.entity.AgentToolSource;
 import com.example.agent.service.AgentService;
 import com.example.agent.service.AgentSkillService;
 import com.example.agent.service.AgentSessionService;
@@ -13,6 +15,7 @@ import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,6 +27,8 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 @Controller
@@ -38,6 +43,9 @@ public class AgentController {
     private final ImageQuestionContextService imageQuestionContextService;
     private final AgentSkillService skillService;
     private final AgentToolManagementService toolManagementService;
+
+    @Value("${agent.admin.user-ids:1}")
+    private String adminUserIds;
 
     @GetMapping
     public String index(@RequestParam(required = false) Long sessionId, HttpSession httpSession, Model model) {
@@ -114,6 +122,29 @@ public class AgentController {
         return ResponseEntity.ok(stepService.listSteps(session.getId()));
     }
 
+    @GetMapping("/admin")
+    public String admin(HttpSession httpSession, Model model) {
+        Long userId = (Long) httpSession.getAttribute("uid");
+        if (userId == null) {
+            return "redirect:/auth/login";
+        }
+        if (!isAdmin(userId)) {
+            return "redirect:/agent";
+        }
+        skillService.ensureDefaultSkills();
+        List<AgentToolConfig> tools = toolManagementService.listTools();
+        model.addAttribute("tools", tools);
+        model.addAttribute("skills", skillService.listSkillProfiles());
+        model.addAttribute("toolCount", tools.size());
+        model.addAttribute("mcpToolCount", tools.stream()
+                .filter(tool -> tool.getToolSource() == AgentToolSource.MCP)
+                .count());
+        model.addAttribute("enabledToolCount", tools.stream()
+                .filter(tool -> Boolean.TRUE.equals(tool.getEnabled()))
+                .count());
+        return "agent-admin";
+    }
+
     @GetMapping("/tools")
     @ResponseBody
     public ResponseEntity<?> tools(HttpSession httpSession) {
@@ -133,7 +164,25 @@ public class AgentController {
         if (userId == null) {
             return ResponseEntity.status(401).body("Please login first.");
         }
+        if (!isAdmin(userId)) {
+            return ResponseEntity.status(403).body("Admin permission is required.");
+        }
         return ResponseEntity.ok(toolManagementService.setToolEnabled(toolName, enabled));
+    }
+
+    @PostMapping("/admin/tools/{toolName}/enabled")
+    public String setToolEnabledFromAdmin(@PathVariable String toolName,
+                                          @RequestParam boolean enabled,
+                                          HttpSession httpSession) {
+        Long userId = (Long) httpSession.getAttribute("uid");
+        if (userId == null) {
+            return "redirect:/auth/login";
+        }
+        if (!isAdmin(userId)) {
+            return "redirect:/agent";
+        }
+        toolManagementService.setToolEnabled(toolName, enabled);
+        return "redirect:/agent/admin";
     }
 
     @GetMapping("/skills")
@@ -145,6 +194,66 @@ public class AgentController {
         }
         skillService.ensureDefaultSkills();
         return ResponseEntity.ok(skillService.listEnabledSkillProfiles());
+    }
+
+    @PostMapping("/skills/{skillId}/enabled")
+    @ResponseBody
+    public ResponseEntity<?> setSkillEnabled(@PathVariable Long skillId,
+                                             @RequestParam boolean enabled,
+                                             HttpSession httpSession) {
+        Long userId = (Long) httpSession.getAttribute("uid");
+        if (userId == null) {
+            return ResponseEntity.status(401).body("Please login first.");
+        }
+        if (!isAdmin(userId)) {
+            return ResponseEntity.status(403).body("Admin permission is required.");
+        }
+        return ResponseEntity.ok(skillService.setSkillEnabled(skillId, enabled));
+    }
+
+    @PostMapping("/admin/skills/{skillId}/enabled")
+    public String setSkillEnabledFromAdmin(@PathVariable Long skillId,
+                                           @RequestParam boolean enabled,
+                                           HttpSession httpSession) {
+        Long userId = (Long) httpSession.getAttribute("uid");
+        if (userId == null) {
+            return "redirect:/auth/login";
+        }
+        if (!isAdmin(userId)) {
+            return "redirect:/agent";
+        }
+        skillService.setSkillEnabled(skillId, enabled);
+        return "redirect:/agent/admin";
+    }
+
+    @PostMapping("/skills/{skillId}/tools")
+    @ResponseBody
+    public ResponseEntity<?> replaceSkillTools(@PathVariable Long skillId,
+                                               @RequestParam(required = false) List<String> toolNames,
+                                               HttpSession httpSession) {
+        Long userId = (Long) httpSession.getAttribute("uid");
+        if (userId == null) {
+            return ResponseEntity.status(401).body("Please login first.");
+        }
+        if (!isAdmin(userId)) {
+            return ResponseEntity.status(403).body("Admin permission is required.");
+        }
+        return ResponseEntity.ok(skillService.replaceSkillTools(skillId, toolNames));
+    }
+
+    @PostMapping("/admin/skills/{skillId}/tools")
+    public String replaceSkillToolsFromAdmin(@PathVariable Long skillId,
+                                             @RequestParam(required = false) List<String> toolNames,
+                                             HttpSession httpSession) {
+        Long userId = (Long) httpSession.getAttribute("uid");
+        if (userId == null) {
+            return "redirect:/auth/login";
+        }
+        if (!isAdmin(userId)) {
+            return "redirect:/agent";
+        }
+        skillService.replaceSkillTools(skillId, toolNames);
+        return "redirect:/agent/admin";
     }
 
     @PostMapping("/session/skill")
@@ -169,5 +278,15 @@ public class AgentController {
         }
         sessionService.clearSession(userId, sessionId);
         return ResponseEntity.ok("Agent session cleared.");
+    }
+
+    private boolean isAdmin(Long userId) {
+        if (userId == null || adminUserIds == null || adminUserIds.isBlank()) {
+            return false;
+        }
+        return Arrays.stream(adminUserIds.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .anyMatch(value -> value.equals(String.valueOf(userId)));
     }
 }

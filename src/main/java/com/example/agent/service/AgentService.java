@@ -3,6 +3,7 @@ package com.example.agent.service;
 import com.example.agent.entity.AgentMessage;
 import com.example.agent.entity.AgentSession;
 import com.example.agent.executor.ReActAgentExecutor;
+import com.example.agent.service.AgentSkillService.SkillProfile;
 import com.example.demo.service.ImageQuestionContext;
 import com.example.demo.service.ImageQuestionContextService;
 import org.springframework.ai.chat.client.ChatClient;
@@ -30,6 +31,7 @@ public class AgentService {
     private final ChatModel chatModel;
     private final AgentSessionService sessionService;
     private final AgentStepService stepService;
+    private final AgentSkillService skillService;
     private final ReActAgentExecutor reactAgentExecutor;
     private final ImageQuestionContextService imageQuestionContextService;
     private final int recentMessageLimit;
@@ -38,6 +40,7 @@ public class AgentService {
     public AgentService(@Qualifier("agentDeepSeekChatModel") ChatModel chatModel,
                         AgentSessionService sessionService,
                         AgentStepService stepService,
+                        AgentSkillService skillService,
                         ReActAgentExecutor reactAgentExecutor,
                         ImageQuestionContextService imageQuestionContextService,
                         @Value("${agent.history.recent-message-limit:12}") int recentMessageLimit,
@@ -45,6 +48,7 @@ public class AgentService {
         this.chatModel = chatModel;
         this.sessionService = sessionService;
         this.stepService = stepService;
+        this.skillService = skillService;
         this.reactAgentExecutor = reactAgentExecutor;
         this.imageQuestionContextService = imageQuestionContextService;
         this.recentMessageLimit = Math.max(MIN_RECENT_MESSAGE_LIMIT,
@@ -67,16 +71,17 @@ public class AgentService {
                 : safeQuestion + "\n\n[图片输入]\n" + imageContext.description();
 
         AgentSession session = sessionService.getOrCreateSession(userId, sessionId);
+        SkillProfile skill = skillService.resolveSkill(session.getSkillId());
         AgentMessage userMessage = sessionService.saveMessage(session.getId(), "user",
                 imageContext == null ? safeQuestion : safeQuestion + "\n\n![用户上传图片](" + imageContext.webPath() + ")");
-        List<Message> history = buildHistoryWithSummary(session, userMessage.getId());
+        List<Message> history = buildHistoryWithSummary(session, userMessage.getId(), skill);
 
         if (!requiresReactTools(effectiveQuestion)) {
-            return streamDirectAnswer(session, userMessage, effectiveQuestion, imagePromptContext, history);
+            return streamDirectAnswer(session, userMessage, effectiveQuestion, imagePromptContext, history, skill);
         }
 
         return Mono.fromCallable(() -> reactAgentExecutor.execute(
-                        userId, session.getId(), userMessage.getId(), effectiveQuestion, history))
+                        userId, session.getId(), userMessage.getId(), effectiveQuestion, history, skill))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(answer -> {
                     sessionService.saveMessage(session.getId(), "assistant", answer);
@@ -92,7 +97,8 @@ public class AgentService {
                                             AgentMessage userMessage,
                                             String question,
                                             String imagePromptContext,
-                                            List<Message> history) {
+                                            List<Message> history,
+                                            SkillProfile skill) {
         stepService.recordPlan(session.getId(), userMessage.getId(),
                 "Direct streaming answer; no external tool is required.");
         StringBuilder finalAnswer = new StringBuilder();
@@ -100,11 +106,18 @@ public class AgentService {
                 .prompt()
                 .system("""
                         You are the AI assistant in this Agent workspace.
+                        Active skill: %s (%s)
+                        Skill instructions:
+                        %s
                         Answer in Chinese with clear Markdown.
                         This request does not require local tools, web search, downloads, PDF generation, or RAG.
                         %s
                         Do not output ReAct JSON. Output only the final user-facing answer.
-                        """.formatted(imagePromptContext == null ? "" : imagePromptContext))
+                        """.formatted(
+                        skill.name(),
+                        skill.code(),
+                        blankToDefault(skill.systemPrompt(), "Answer clearly and keep useful context."),
+                        imagePromptContext == null ? "" : imagePromptContext))
                 .messages(history)
                 .user(question)
                 .stream()
@@ -141,7 +154,7 @@ public class AgentService {
         return false;
     }
 
-    private List<Message> buildHistoryWithSummary(AgentSession session, Long currentUserMessageId) {
+    private List<Message> buildHistoryWithSummary(AgentSession session, Long currentUserMessageId, SkillProfile skill) {
         List<AgentMessage> messages = sessionService.listMessages(session.getId());
         List<AgentMessage> previousMessages = messages.stream()
                 .filter(message -> message.getId() == null || !message.getId().equals(currentUserMessageId))
@@ -153,6 +166,10 @@ public class AgentService {
         int recentFrom = Math.max(0, previousMessages.size() - recentMessageLimit);
         List<AgentMessage> olderMessages = previousMessages.subList(0, recentFrom);
         List<AgentMessage> recentMessages = previousMessages.subList(recentFrom, previousMessages.size());
+
+        if (skill != null && !skill.summaryMemoryEnabled()) {
+            return toSpringMessages(recentMessages, currentUserMessageId);
+        }
 
         String summary = session.getConversationSummary();
         Long summarizedMessageId = session.getSummarizedMessageId();

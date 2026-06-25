@@ -27,6 +27,12 @@ public class AgentSkillService {
         return skillRepository.findByEnabledTrueOrderByIdAsc();
     }
 
+    public List<SkillProfile> listEnabledSkillProfiles() {
+        return listEnabledSkills().stream()
+                .map(this::toProfile)
+                .toList();
+    }
+
     public SkillProfile resolveSkill(Long skillId) {
         AgentSkill skill = null;
         if (skillId != null) {

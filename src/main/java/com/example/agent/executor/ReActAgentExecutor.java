@@ -1,6 +1,7 @@
 package com.example.agent.executor;
 
 import com.example.agent.entity.AgentToolSource;
+import com.example.agent.service.AgentSkillService.SkillProfile;
 import com.example.agent.service.AgentStepService;
 import com.example.agent.tool.react.AgentWorkspaceService;
 import com.example.agent.tool.react.ReactTool;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class ReActAgentExecutor {
@@ -46,13 +48,21 @@ public class ReActAgentExecutor {
         this.maxSteps = Math.max(1, Math.min(maxSteps, 16));
     }
 
-    public String execute(Long userId, Long sessionId, Long messageId, String question, List<Message> history) {
+    public String execute(Long userId,
+                          Long sessionId,
+                          Long messageId,
+                          String question,
+                          List<Message> history,
+                          SkillProfile skill) {
         Path workspace = workspaceService.workspace(userId, sessionId);
-        ToolExecutionContext context = new ToolExecutionContext(userId, sessionId, messageId, workspace);
+        SkillProfile activeSkill = skill == null ? defaultSkill() : skill;
+        Set<String> allowedTools = activeSkill.allowedTools() == null ? Set.of() : activeSkill.allowedTools();
+        ToolExecutionContext context = new ToolExecutionContext(
+                userId, sessionId, messageId, workspace, activeSkill.id(), activeSkill.name(), allowedTools);
         List<String> observations = new ArrayList<>();
 
         for (int step = 1; step <= maxSteps; step++) {
-            ReActAction action = nextAction(question, history, observations, step);
+            ReActAction action = nextAction(question, history, observations, step, activeSkill);
             String plan = blankToDefault(action.plan(), "Decide the next action.");
             stepService.recordPlan(sessionId, messageId, "Step " + step + ": " + plan);
 
@@ -68,9 +78,9 @@ public class ReActAgentExecutor {
                 return answer;
             }
 
-            ReactTool tool = toolRegistry.find(action.toolName()).orElse(null);
+            ReactTool tool = toolRegistry.find(action.toolName(), allowedTools).orElse(null);
             if (tool == null) {
-                String observation = "Unknown tool: " + action.toolName() + ". Available tools: " + toolRegistry.list().stream()
+                String observation = "Unknown or disabled tool for current skill: " + action.toolName() + ". Available tools: " + toolRegistry.list(allowedTools).stream()
                         .map(ReactTool::name)
                         .toList();
                 stepService.recordToolError(sessionId, messageId, action.toolName(), AgentToolSource.LOCAL,
@@ -81,7 +91,7 @@ public class ReActAgentExecutor {
 
             long startedAt = System.currentTimeMillis();
             String argumentsJson = toJson(action.arguments());
-            stepService.recordToolCall(sessionId, messageId, tool.name(), AgentToolSource.LOCAL, argumentsJson);
+            stepService.recordToolCall(sessionId, messageId, tool.name(), tool.source(), argumentsJson);
             ToolExecutionResult result;
             try {
                 result = tool.execute(context, action.arguments());
@@ -90,7 +100,7 @@ public class ReActAgentExecutor {
             }
             long latencyMs = System.currentTimeMillis() - startedAt;
             if (result.success()) {
-                stepService.recordToolResult(sessionId, messageId, tool.name(), AgentToolSource.LOCAL,
+                stepService.recordToolResult(sessionId, messageId, tool.name(), tool.source(),
                         argumentsJson, result.toObservation(), latencyMs);
                 if ("terminate".equals(tool.name())) {
                     String answer = blankToDefault(result.content(), "Task terminated.");
@@ -98,7 +108,7 @@ public class ReActAgentExecutor {
                     return answer;
                 }
             } else {
-                stepService.recordToolError(sessionId, messageId, tool.name(), AgentToolSource.LOCAL,
+                stepService.recordToolError(sessionId, messageId, tool.name(), tool.source(),
                         argumentsJson, result.errorMessage(), latencyMs);
             }
             observations.add(formatObservation(step, tool.name(), result.success(), result.toObservation()));
@@ -110,9 +120,13 @@ public class ReActAgentExecutor {
         return answer;
     }
 
-    private ReActAction nextAction(String question, List<Message> history, List<String> observations, int step) {
+    private ReActAction nextAction(String question,
+                                   List<Message> history,
+                                   List<String> observations,
+                                   int step,
+                                   SkillProfile skill) {
         List<Message> messages = new ArrayList<>();
-        messages.add(new SystemMessage(systemPrompt()));
+        messages.add(new SystemMessage(systemPrompt(skill)));
         if (history != null) {
             messages.addAll(history);
         }
@@ -121,9 +135,14 @@ public class ReActAgentExecutor {
         return ReActAction.fromModelText(extractText(response), objectMapper);
     }
 
-    private String systemPrompt() {
+    private String systemPrompt(SkillProfile skill) {
+        SkillProfile activeSkill = skill == null ? defaultSkill() : skill;
+        Set<String> allowedTools = activeSkill.allowedTools() == null ? Set.of() : activeSkill.allowedTools();
         return """
                 You are a ReAct-style AI agent in this Java Spring system.
+                Active skill: %s (%s)
+                Skill instructions:
+                %s
 
                 You must respond with exactly one JSON object and no Markdown fences.
                 The JSON must be valid. Escape newlines in string values as \\n.
@@ -160,7 +179,15 @@ public class ReActAgentExecutor {
 
                 Available tools:
                 %s
-                """.formatted(toolRegistry.toolDescriptions());
+                """.formatted(
+                activeSkill.name(),
+                activeSkill.code(),
+                blankToDefault(activeSkill.systemPrompt(), "Use the available tools only when they help the user's task."),
+                toolRegistry.toolDescriptions(allowedTools));
+    }
+
+    private SkillProfile defaultSkill() {
+        return new SkillProfile(null, "general", "General Agent", "", "", "SUMMARY", Set.of());
     }
 
     private String userPrompt(String question, List<String> observations, int step) {

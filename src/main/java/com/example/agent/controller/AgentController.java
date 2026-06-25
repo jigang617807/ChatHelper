@@ -2,8 +2,10 @@ package com.example.agent.controller;
 
 import com.example.agent.entity.AgentSession;
 import com.example.agent.service.AgentService;
+import com.example.agent.service.AgentSkillService;
 import com.example.agent.service.AgentSessionService;
 import com.example.agent.service.AgentStepService;
+import com.example.agent.service.AgentToolManagementService;
 import com.example.agent.tool.AgentToolRegistry;
 import com.example.demo.service.ImageQuestionContext;
 import com.example.demo.service.ImageQuestionContextService;
@@ -14,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -33,6 +36,8 @@ public class AgentController {
     private final AgentService agentService;
     private final AgentToolRegistry toolRegistry;
     private final ImageQuestionContextService imageQuestionContextService;
+    private final AgentSkillService skillService;
+    private final AgentToolManagementService toolManagementService;
 
     @GetMapping
     public String index(@RequestParam(required = false) Long sessionId, HttpSession httpSession, Model model) {
@@ -42,8 +47,11 @@ public class AgentController {
         }
 
         toolRegistry.syncToolConfigs();
+        skillService.ensureDefaultSkills();
         AgentSession activeSession = sessionService.getOrCreateSession(userId, sessionId);
         model.addAttribute("activeSession", activeSession);
+        model.addAttribute("activeSkill", skillService.resolveSkill(activeSession.getSkillId()));
+        model.addAttribute("skills", skillService.listEnabledSkills());
         model.addAttribute("sessions", sessionService.listActiveSessions(userId));
         model.addAttribute("messages", sessionService.listMessages(activeSession.getId()));
         model.addAttribute("steps", stepService.listSteps(activeSession.getId()));
@@ -51,12 +59,14 @@ public class AgentController {
     }
 
     @PostMapping("/session/create")
-    public String createSession(@RequestParam(required = false) String title, HttpSession httpSession) {
+    public String createSession(@RequestParam(required = false) String title,
+                                @RequestParam(required = false) Long skillId,
+                                HttpSession httpSession) {
         Long userId = (Long) httpSession.getAttribute("uid");
         if (userId == null) {
             return "redirect:/auth/login";
         }
-        AgentSession session = sessionService.createSession(userId, title);
+        AgentSession session = sessionService.createSession(userId, title, skillId);
         return "redirect:/agent?sessionId=" + session.getId();
     }
 
@@ -102,6 +112,51 @@ public class AgentController {
         }
         AgentSession session = sessionService.getOrCreateSession(userId, sessionId);
         return ResponseEntity.ok(stepService.listSteps(session.getId()));
+    }
+
+    @GetMapping("/tools")
+    @ResponseBody
+    public ResponseEntity<?> tools(HttpSession httpSession) {
+        Long userId = (Long) httpSession.getAttribute("uid");
+        if (userId == null) {
+            return ResponseEntity.status(401).body("Please login first.");
+        }
+        return ResponseEntity.ok(toolManagementService.listTools());
+    }
+
+    @PostMapping("/tools/{toolName}/enabled")
+    @ResponseBody
+    public ResponseEntity<?> setToolEnabled(@PathVariable String toolName,
+                                            @RequestParam boolean enabled,
+                                            HttpSession httpSession) {
+        Long userId = (Long) httpSession.getAttribute("uid");
+        if (userId == null) {
+            return ResponseEntity.status(401).body("Please login first.");
+        }
+        return ResponseEntity.ok(toolManagementService.setToolEnabled(toolName, enabled));
+    }
+
+    @GetMapping("/skills")
+    @ResponseBody
+    public ResponseEntity<?> skills(HttpSession httpSession) {
+        Long userId = (Long) httpSession.getAttribute("uid");
+        if (userId == null) {
+            return ResponseEntity.status(401).body("Please login first.");
+        }
+        skillService.ensureDefaultSkills();
+        return ResponseEntity.ok(skillService.listEnabledSkillProfiles());
+    }
+
+    @PostMapping("/session/skill")
+    @ResponseBody
+    public ResponseEntity<?> updateSessionSkill(@RequestParam Long sessionId,
+                                                @RequestParam(required = false) Long skillId,
+                                                HttpSession httpSession) {
+        Long userId = (Long) httpSession.getAttribute("uid");
+        if (userId == null) {
+            return ResponseEntity.status(401).body("Please login first.");
+        }
+        return ResponseEntity.ok(sessionService.updateSkill(userId, sessionId, skillId));
     }
 
     @PostMapping("/clear")

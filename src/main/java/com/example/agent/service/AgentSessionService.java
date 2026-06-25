@@ -40,9 +40,23 @@ public class AgentSessionService {
 
     @Transactional
     public AgentSession createSession(Long userId, String title) {
+        return createSession(userId, title, null);
+    }
+
+    @Transactional
+    public AgentSession createSession(Long userId, String title, Long skillId) {
         AgentSession session = new AgentSession();
         session.setUserId(userId);
         session.setTitle((title == null || title.isBlank()) ? "AI Super Agent" : title);
+        session.setSkillId(skillId);
+        return sessionRepository.save(session);
+    }
+
+    @Transactional
+    public AgentSession updateSkill(Long userId, Long sessionId, Long skillId) {
+        AgentSession session = sessionRepository.findByIdAndUserId(sessionId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent session not found"));
+        session.setSkillId(skillId);
         return sessionRepository.save(session);
     }
 

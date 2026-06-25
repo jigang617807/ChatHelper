@@ -21,6 +21,11 @@
             <form class="agent-new-session" action="/agent/session/create" method="post">
                 <input name="title" placeholder="新会话标题">
                 <button class="btn btn-secondary" type="submit">新建</button>
+                <select name="skillId">
+                    <option th:each="skill : ${skills}"
+                            th:value="${skill.id}"
+                            th:text="${skill.name}">General Agent</option>
+                </select>
             </form>
 
             <div class="agent-session-list">

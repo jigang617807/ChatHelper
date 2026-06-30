@@ -143,7 +143,11 @@ public class AgentService {
                 "\u8d44\u6599", "\u8c03\u7814", "\u62a5\u544a", "\u8054\u7f51",
                 "\u5de5\u5177", "\u80fd\u529b", "\u4f60\u80fd\u505a\u4ec0\u4e48",
                 "\u65f6\u95f4", "\u51e0\u70b9", "\u65e5\u671f", "\u4eca\u5929",
+                "\u73b0\u5728", "\u5f53\u524d", "\u5b9e\u65f6", "\u660e\u5929", "\u540e\u5929",
+                "\u5f00\u653e\u65f6\u95f4", "\u4ef7\u683c", "\u653f\u7b56", "\u6838\u5b9e", "\u9a8c\u8bc1",
+                "\u662f\u5426\u57fa\u4e8e", "\u8fd8\u6210\u7acb", "\u6709\u6ca1\u6709\u8054\u7f51", "\u66f4\u65b0",
                 "\u8ba1\u7b97", "\u7b97\u4e00\u4e0b", "\u7b97\u4e0b",
+                "current", "latest", "real-time", "realtime", "verify", "validate", "update",
                 "web", "search", "scrape", "download", "url", "http", "tool", "tools", "calculate"
         };
         for (String signal : toolSignals) {

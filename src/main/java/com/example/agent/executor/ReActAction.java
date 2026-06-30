@@ -5,8 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public record ReActAction(
         String type,
@@ -15,9 +13,6 @@ public record ReActAction(
         Map<String, Object> arguments,
         String finalAnswer
 ) {
-
-    private static final Pattern FINAL_ANSWER_PATTERN = Pattern.compile(
-            "(?s)\"finalAnswer\"\\s*:\\s*\"(.*)\"\\s*[,}]\\s*$");
 
     public boolean isFinish() {
         return "finish".equalsIgnoreCase(type);
@@ -28,6 +23,14 @@ public record ReActAction(
     }
 
     public static ReActAction fromModelText(String text, ObjectMapper objectMapper) {
+        try {
+            return parseRequired(text, objectMapper);
+        } catch (Exception ex) {
+            return new ReActAction("finish", "Model action could not be parsed.", null, Map.of(), "");
+        }
+    }
+
+    public static ReActAction parseRequired(String text, ObjectMapper objectMapper) {
         try {
             String json = extractJson(text);
             JsonNode node = objectMapper.readTree(json);
@@ -41,21 +44,15 @@ public record ReActAction(
                 arguments = objectMapper.convertValue(argsNode, objectMapper.getTypeFactory()
                         .constructMapType(LinkedHashMap.class, String.class, Object.class));
             }
-            return new ReActAction(type, plan, toolName, arguments, finalAnswer);
+            ReActAction action = new ReActAction(type, plan, toolName, arguments, finalAnswer);
+            validate(action);
+            return action;
         } catch (Exception ex) {
-            String finalAnswer = extractFinalAnswerFallback(text);
-            if (finalAnswer != null && !finalAnswer.isBlank()) {
-                return new ReActAction("finish",
-                        "Recovered finalAnswer from malformed JSON output.", null, Map.of(), finalAnswer);
-            }
-            String safeAnswer = looksLikeJson(text)
-                    ? "The model returned malformed ReAct JSON, and the final answer could not be parsed. Please try again."
-                    : text;
-            return new ReActAction("finish", "Model returned non-JSON output.", null, Map.of(), safeAnswer);
+            throw new IllegalArgumentException("Invalid ReAct action JSON: " + ex.getMessage(), ex);
         }
     }
 
-    private static String extractJson(String text) {
+    public static String extractJson(String text) {
         String value = text == null ? "" : text.trim();
         if (value.startsWith("```")) {
             value = value.replaceFirst("(?s)^```(?:json)?\\s*", "");
@@ -69,27 +66,15 @@ public record ReActAction(
         return value;
     }
 
-    private static String extractFinalAnswerFallback(String text) {
-        String value = extractJson(text);
-        Matcher matcher = FINAL_ANSWER_PATTERN.matcher(value);
-        if (!matcher.find()) {
-            return null;
+    private static void validate(ReActAction action) {
+        if (action.type() == null || action.type().isBlank()) {
+            throw new IllegalArgumentException("type is required");
         }
-        return unescapeJsonLike(matcher.group(1));
-    }
-
-    private static String unescapeJsonLike(String value) {
-        return value
-                .replace("\\n", "\n")
-                .replace("\\r", "\r")
-                .replace("\\t", "\t")
-                .replace("\\\"", "\"")
-                .replace("\\\\", "\\")
-                .trim();
-    }
-
-    private static boolean looksLikeJson(String text) {
-        String value = text == null ? "" : text.trim();
-        return value.startsWith("{") || value.startsWith("```json") || value.startsWith("```");
+        if (!action.isTool() && !action.isFinish()) {
+            throw new IllegalArgumentException("type must be tool or finish");
+        }
+        if (action.isTool() && (action.toolName() == null || action.toolName().isBlank())) {
+            throw new IllegalArgumentException("toolName is required for tool actions");
+        }
     }
 }
